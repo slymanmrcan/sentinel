@@ -458,6 +458,7 @@ func startCollector(defaultSource string) {
 	if err == nil {
 		osName = fmt.Sprintf("%s %s", hStat.OS, hStat.Platform)
 	}
+	osName = getHostOS(osName)
 
 	// First Run Metrics Extraction
 	collectAndStore(defaultSource, cpuCores, cpuModel, osName)
@@ -465,6 +466,40 @@ func startCollector(defaultSource string) {
 	for range ticker.C {
 		collectAndStore(defaultSource, cpuCores, cpuModel, osName)
 	}
+}
+
+// Read the actual OS of the host system rather than the Docker container OS
+func getHostOS(containerOS string) string {
+	hostRoot := os.Getenv("HOST_ROOT")
+	if hostRoot == "" {
+		return containerOS
+	}
+	// Try standard paths on the host file system
+	paths := []string{
+		hostRoot + "/etc/os-release",
+		hostRoot + "/usr/lib/os-release",
+	}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err == nil {
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				if strings.HasPrefix(line, "PRETTY_NAME=") {
+					val := strings.TrimPrefix(line, "PRETTY_NAME=")
+					val = strings.Trim(val, `"`+`'`)
+					return val
+				}
+			}
+			for _, line := range lines {
+				if strings.HasPrefix(line, "NAME=") {
+					val := strings.TrimPrefix(line, "NAME=")
+					val = strings.Trim(val, `"`+`'`)
+					return val
+				}
+			}
+		}
+	}
+	return containerOS
 }
 
 // Read CPU temperature directly from sysfs (bulletproof on Dockerized ARM/Linux servers)
