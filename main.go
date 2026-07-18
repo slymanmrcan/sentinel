@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -22,6 +23,8 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v3/net"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 // Embed frontend files
@@ -146,6 +149,7 @@ func main() {
 	http.HandleFunc("/api/metrics/realtime", basicAuth(handleRealtimeMetrics))
 	http.HandleFunc("/api/metrics/history", basicAuth(handleHistoryMetrics))
 	http.HandleFunc("/api/logs", basicAuth(handleLogs))
+	http.HandleFunc("/api/system/details", basicAuth(handleSystemDetails))
 
 	// 3. Embedded Static Assets (Basic Auth Protected)
 	subFS, err := fs.Sub(webFiles, "web")
@@ -709,4 +713,132 @@ func collectAndStore(defaultSource string, cpuCores int, cpuModel, osName string
 			insertLog("WARN", fmt.Sprintf("High RAM usage warning: %.2f%%", ramPercent), "collector")
 		}
 	}
+}
+
+// System details and processes structs
+type SystemDetailsResponse struct {
+	KernelVersion  string        `json:"kernel_version"`
+	RebootRequired bool          `json:"reboot_required"`
+	Processes      []ProcessInfo `json:"processes"`
+	ListeningPorts []PortInfo    `json:"listening_ports"`
+}
+
+type ProcessInfo struct {
+	PID     int32   `json:"pid"`
+	Name    string  `json:"name"`
+	CPU     float64 `json:"cpu"`
+	Memory  float64 `json:"memory"`
+	Command string  `json:"command"`
+}
+
+type PortInfo struct {
+	Port uint32 `json:"port"`
+	PID  int32  `json:"pid"`
+	Name string `json:"name"`
+}
+
+// Handler: GET /api/system/details
+func handleSystemDetails(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	kernel := "Unknown"
+	hStat, err := host.Info()
+	if err == nil {
+		kernel = hStat.KernelVersion
+	}
+
+	resp := SystemDetailsResponse{
+		KernelVersion:  kernel,
+		RebootRequired: isRebootRequired(),
+		Processes:      getProcesses(),
+		ListeningPorts: getListeningPorts(),
+	}
+
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("Failed to encode system details: %v", err)
+	}
+}
+
+func getProcesses() []ProcessInfo {
+	pList, err := process.Processes()
+	if err != nil {
+		return nil
+	}
+	var procs []ProcessInfo
+	for _, p := range pList {
+		name, err := p.Name()
+		if err != nil {
+			continue
+		}
+		memPct, _ := p.MemoryPercent()
+		cpuPct, _ := p.CPUPercent()
+		cmd, _ := p.Cmdline()
+		if len(cmd) > 120 {
+			cmd = cmd[:120] + "..."
+		}
+		procs = append(procs, ProcessInfo{
+			PID:     p.Pid,
+			Name:    name,
+			CPU:     cpuPct,
+			Memory:  float64(memPct),
+			Command: cmd,
+		})
+	}
+	// Sort by memory usage descending
+	sort.Slice(procs, func(i, j int) bool {
+		return procs[i].Memory > procs[j].Memory
+	})
+	if len(procs) > 15 {
+		return procs[:15]
+	}
+	return procs
+}
+
+func getListeningPorts() []PortInfo {
+	conns, err := net.Connections("tcp")
+	if err != nil {
+		return nil
+	}
+	var ports []PortInfo
+	seen := make(map[uint32]bool)
+	for _, conn := range conns {
+		if conn.Status == "LISTEN" {
+			port := conn.Laddr.Port
+			if seen[port] {
+				continue
+			}
+			seen[port] = true
+			procName := "Unknown"
+			if conn.Pid > 0 {
+				if p, err := process.NewProcess(conn.Pid); err == nil {
+					if name, err := p.Name(); err == nil {
+						procName = name
+					}
+				}
+			}
+			ports = append(ports, PortInfo{
+				Port: port,
+				PID:  conn.Pid,
+				Name: procName,
+			})
+		}
+	}
+	// Sort by port ascending
+	sort.Slice(ports, func(i, j int) bool {
+		return ports[i].Port < ports[j].Port
+	})
+	return ports
+}
+
+func isRebootRequired() bool {
+	hostRoot := os.Getenv("HOST_ROOT")
+	if hostRoot == "" {
+		hostRoot = ""
+	}
+	_, err := os.Stat(hostRoot + "/var/run/reboot-required")
+	return err == nil
 }

@@ -169,6 +169,61 @@
             </div>
         </section>
 
+        <!-- System Inspector Section (Processes & Ports) -->
+        <section class="inspector-section glass">
+            <div class="section-header">
+                <h2>System Inspector</h2>
+                <div class="system-status-pills">
+                    <span class="status-pill" id="kernelPill">Kernel: Loading...</span>
+                    <span class="status-pill badge-neutral" id="rebootPill">No Reboot Required</span>
+                </div>
+            </div>
+            <div class="inspector-grid">
+                <!-- Top Processes Card -->
+                <div class="inspector-card">
+                    <h3>Top Processes <span>(by Memory)</span></h3>
+                    <div class="table-container">
+                        <table class="inspector-table">
+                            <thead>
+                                <tr>
+                                    <th>PID</th>
+                                    <th>Process Name</th>
+                                    <th style="text-align: right;">CPU</th>
+                                    <th style="text-align: right;">RAM</th>
+                                </tr>
+                            </thead>
+                            <tbody id="processesTableBody">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 1.5rem;">Loading processes...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Listening Ports Card -->
+                <div class="inspector-card">
+                    <h3>Listening Ports <span>(TCP)</span></h3>
+                    <div class="table-container">
+                        <table class="inspector-table">
+                            <thead>
+                                <tr>
+                                    <th>Port</th>
+                                    <th>Process</th>
+                                    <th style="text-align: right;">PID</th>
+                                </tr>
+                            </thead>
+                            <tbody id="portsTableBody">
+                                <tr>
+                                    <td colspan="3" style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 1.5rem;">Loading listening ports...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Logs Section -->
         <section class="logs-section glass">
             <div class="section-header">

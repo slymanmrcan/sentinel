@@ -2,6 +2,7 @@ services:
   sentinel:
     build: .
     container_name: sentinel
+    pid: "host"
     restart: unless-stopped
     expose:
       - "8000"

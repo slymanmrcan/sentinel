@@ -7,10 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchRealtimeMetrics();
     fetchHistoryMetrics();
     fetchLogs();
+    fetchSystemDetails();
 
     // Setup periodic polling
     setInterval(fetchRealtimeMetrics, 2000);
     setInterval(fetchLogs, 3000);
+    setInterval(fetchSystemDetails, 10000);
 });
 
 // Helper: Format Bytes to GB
@@ -320,4 +322,67 @@ function escapeHTML(str) {
             '"': '&quot;'
         }[tag] || tag)
     );
+}
+
+// 5. Fetch Advanced System Details (Processes & Listening Ports)
+async function fetchSystemDetails() {
+    try {
+        const res = await fetch('/api/system/details');
+        if (!res.ok) throw new Error('API error');
+        const data = await res.json();
+
+        // 1. Update Kernel Pill
+        document.getElementById('kernelPill').textContent = `Kernel: ${data.kernel_version || '--'}`;
+
+        // 2. Update Reboot Pill
+        const rebootPill = document.getElementById('rebootPill');
+        if (data.reboot_required) {
+            rebootPill.textContent = '⚠️ Restart Required';
+            rebootPill.className = 'status-pill badge-danger';
+        } else {
+            rebootPill.textContent = 'System Healthy';
+            rebootPill.className = 'status-pill badge-neutral';
+        }
+
+        // 3. Populate Processes Table
+        const procTable = document.getElementById('processesTableBody');
+        if (!data.processes || data.processes.length === 0) {
+            procTable.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 1.5rem;">No processes returned.</td></tr>`;
+        } else {
+            let procHtml = '';
+            data.processes.forEach(p => {
+                const cpuStr = p.cpu ? p.cpu.toFixed(1) + '%' : '0.0%';
+                const memStr = p.memory ? p.memory.toFixed(1) + '%' : '0.0%';
+                procHtml += `
+                    <tr>
+                        <td class="proc-pid">${p.pid}</td>
+                        <td title="${escapeHTML(p.command)}" style="font-weight: 500;">${escapeHTML(p.name)}</td>
+                        <td style="text-align: right; color: ${p.cpu > 50 ? 'var(--danger)' : 'inherit'};">${cpuStr}</td>
+                        <td style="text-align: right; color: ${p.memory > 10 ? 'var(--warning)' : 'inherit'};">${memStr}</td>
+                    </tr>
+                `;
+            });
+            procTable.innerHTML = procHtml;
+        }
+
+        // 4. Populate Listening Ports Table
+        const portsTable = document.getElementById('portsTableBody');
+        if (!data.listening_ports || data.listening_ports.length === 0) {
+            portsTable.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 1.5rem;">No open listening ports.</td></tr>`;
+        } else {
+            let portHtml = '';
+            data.listening_ports.forEach(port => {
+                portHtml += `
+                    <tr>
+                        <td class="port-number">:${port.port}</td>
+                        <td style="font-weight: 500;">${escapeHTML(port.name)}</td>
+                        <td class="proc-pid" style="text-align: right;">${port.pid > 0 ? port.pid : '--'}</td>
+                    </tr>
+                `;
+            });
+            portsTable.innerHTML = portHtml;
+        }
+    } catch (err) {
+        console.error('Error fetching system details:', err);
+    }
 }
