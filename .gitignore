@@ -19,3 +19,6 @@ sentinel
 *.njsproj
 *.sln
 *.swp
+
+# Environment variables
+.env

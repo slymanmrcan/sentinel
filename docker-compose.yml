@@ -20,9 +20,9 @@ services:
       - HOST_PROC=/host/proc
       - HOST_SYS=/host/sys
       - HOST_ROOT=/host/root
-      # Uncomment and configure these to secure the web panel and APIs
-      # - AUTH_USER=admin
-      # - AUTH_PASSWORD=change-this-secure-password
+      # Define these inside a local .env file (git ignored)
+      - AUTH_USER
+      - AUTH_PASSWORD
     volumes:
       - ./data:/data
       - /proc:/host/proc:ro
