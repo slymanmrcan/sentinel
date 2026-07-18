@@ -180,8 +180,8 @@ function renderChart(labels, cpuData, ramData) {
                 {
                     label: 'CPU Usage (%)',
                     data: cpuData,
-                    borderColor: '#6366f1',
-                    backgroundColor: 'rgba(99, 102, 241, 0.05)',
+                    borderColor: '#818cf8',
+                    backgroundColor: 'rgba(129, 140, 248, 0.03)',
                     tension: 0.3,
                     fill: true,
                     borderWidth: 2,
@@ -190,8 +190,8 @@ function renderChart(labels, cpuData, ramData) {
                 {
                     label: 'RAM Usage (%)',
                     data: ramData,
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                    borderColor: '#34d399',
+                    backgroundColor: 'rgba(52, 211, 153, 0.03)',
                     tension: 0.3,
                     fill: true,
                     borderWidth: 2,
@@ -205,21 +205,21 @@ function renderChart(labels, cpuData, ramData) {
             plugins: {
                 legend: {
                     labels: {
-                        color: '#9ca3af',
+                        color: '#8b949e',
                         font: { family: 'Outfit' }
                     }
                 }
             },
             scales: {
                 x: {
-                    grid: { color: 'rgba(255, 255, 255, 0.03)' },
-                    ticks: { color: '#9ca3af', font: { family: 'Outfit' } }
+                    grid: { color: 'rgba(255, 255, 255, 0.01)' },
+                    ticks: { color: '#8b949e', font: { family: 'Outfit' } }
                 },
                 y: {
                     min: 0,
                     max: 100,
-                    grid: { color: 'rgba(255, 255, 255, 0.03)' },
-                    ticks: { color: '#9ca3af', font: { family: 'Outfit' } }
+                    grid: { color: 'rgba(255, 255, 255, 0.01)' },
+                    ticks: { color: '#8b949e', font: { family: 'Outfit' } }
                 }
             }
         }

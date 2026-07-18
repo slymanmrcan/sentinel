@@ -1,4 +1,4 @@
-DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -11,7 +11,6 @@ DOCTYPE html>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="glass-bg"></div>
     <div class="container">
         <!-- Header -->
         <header>
@@ -44,35 +43,41 @@ DOCTYPE html>
             <!-- CPU Card -->
             <div class="card glass" id="cpuCard">
                 <div class="card-header">
-                    <h2>CPU Usage</h2>
+                    <h2>CPU</h2>
                     <span class="badge" id="cpuBadge">0%</span>
                 </div>
                 
-                <!-- Circular Chart -->
+                <!-- Circular Chart with Linear Gradients -->
                 <div class="circle-chart-container">
                     <svg viewBox="0 0 36 36" class="circular-chart">
+                        <defs>
+                            <linearGradient id="cpuGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#818cf8" />
+                                <stop offset="100%" stop-color="#c084fc" />
+                            </linearGradient>
+                        </defs>
                         <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path class="circle" id="cpuCircle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="circle" id="cpuCircle" stroke="url(#cpuGrad)" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                     </svg>
                     <div class="circle-value" id="cpuBadgeInner">0%</div>
                 </div>
 
                 <div class="card-details-wrapper">
                     <div class="card-details">
-                        <span>Cores</span>
-                        <span id="cpuCount"><strong>--</strong></span>
+                        <span class="detail-label">Cores</span>
+                        <span id="cpuCount" class="detail-value">--</span>
                     </div>
                     <div class="card-details">
-                        <span>Temp</span>
-                        <span id="cpuTemp"><strong>--</strong></span>
+                        <span class="detail-label">Temp</span>
+                        <span id="cpuTemp" class="detail-value">--</span>
                     </div>
                     <div class="card-details">
-                        <span>Load Avg</span>
-                        <span id="cpuLoad"><strong>--</strong></span>
+                        <span class="detail-label">Load Avg</span>
+                        <span id="cpuLoad" class="detail-value">--</span>
                     </div>
                     <div class="card-details">
-                        <span>Model</span>
-                        <span id="cpuModel" style="max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><strong>--</strong></span>
+                        <span class="detail-label">Model</span>
+                        <span id="cpuModel" class="detail-value" style="max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">--</span>
                     </div>
                 </div>
             </div>
@@ -80,31 +85,37 @@ DOCTYPE html>
             <!-- RAM Card -->
             <div class="card glass" id="ramCard">
                 <div class="card-header">
-                    <h2>RAM Usage</h2>
+                    <h2>RAM</h2>
                     <span class="badge" id="ramBadge">0%</span>
                 </div>
 
-                <!-- Circular Chart -->
+                <!-- Circular Chart with Linear Gradients -->
                 <div class="circle-chart-container">
                     <svg viewBox="0 0 36 36" class="circular-chart">
+                        <defs>
+                            <linearGradient id="ramGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#34d399" />
+                                <stop offset="100%" stop-color="#059669" />
+                            </linearGradient>
+                        </defs>
                         <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path class="circle" id="ramCircle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="circle" id="ramCircle" stroke="url(#ramGrad)" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                     </svg>
                     <div class="circle-value" id="ramBadgeInner">0%</div>
                 </div>
 
                 <div class="card-details-wrapper">
                     <div class="card-details">
-                        <span>Used</span>
-                        <span id="ramUsed"><strong>--</strong></span>
+                        <span class="detail-label">Used</span>
+                        <span id="ramUsed" class="detail-value">--</span>
                     </div>
                     <div class="card-details">
-                        <span>Total</span>
-                        <span id="ramTotal"><strong>--</strong></span>
+                        <span class="detail-label">Total</span>
+                        <span id="ramTotal" class="detail-value">--</span>
                     </div>
                     <div class="card-details">
-                        <span>Swap</span>
-                        <span id="swapInfo"><strong>--</strong></span>
+                        <span class="detail-label">Swap</span>
+                        <span id="swapInfo" class="detail-value">--</span>
                     </div>
                 </div>
             </div>
@@ -112,27 +123,33 @@ DOCTYPE html>
             <!-- Disk Card -->
             <div class="card glass" id="diskCard">
                 <div class="card-header">
-                    <h2>Disk Usage</h2>
+                    <h2>Disk</h2>
                     <span class="badge" id="diskBadge">0%</span>
                 </div>
 
-                <!-- Circular Chart -->
+                <!-- Circular Chart with Linear Gradients -->
                 <div class="circle-chart-container">
                     <svg viewBox="0 0 36 36" class="circular-chart">
+                        <defs>
+                            <linearGradient id="diskGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#22d3ee" />
+                                <stop offset="100%" stop-color="#0891b2" />
+                            </linearGradient>
+                        </defs>
                         <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path class="circle" id="diskCircle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="circle" id="diskCircle" stroke="url(#diskGrad)" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                     </svg>
                     <div class="circle-value" id="diskBadgeInner">0%</div>
                 </div>
 
                 <div class="card-details-wrapper">
                     <div class="card-details">
-                        <span>Used</span>
-                        <span id="diskUsed"><strong>--</strong></span>
+                        <span class="detail-label">Used</span>
+                        <span id="diskUsed" class="detail-value">--</span>
                     </div>
                     <div class="card-details">
-                        <span>Total</span>
-                        <span id="diskTotal"><strong>--</strong></span>
+                        <span class="detail-label">Total</span>
+                        <span id="diskTotal" class="detail-value">--</span>
                     </div>
                 </div>
             </div>
