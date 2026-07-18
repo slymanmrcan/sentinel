@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel System Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="glass-bg"></div>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="brand">
+                <div class="pulse-indicator status-ok" id="statusIndicator"></div>
+                <h1>Sentinel <span>System Monitor</span></h1>
+            </div>
+            <div class="sys-info">
+                <div class="info-item">
+                    <span class="label">Host:</span>
+                    <span class="value" id="hostName">Loading...</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Uptime:</span>
+                    <span class="value" id="uptime">Loading...</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">OS:</span>
+                    <span class="value" id="osType">Loading...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Metrics Grid -->
+        <main class="metrics-grid">
+            <!-- CPU Card -->
+            <div class="card glass" id="cpuCard">
+                <div class="card-header">
+                    <h2>CPU Usage</h2>
+                    <span class="badge" id="cpuBadge">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="cpuBar" style="width: 0%"></div>
+                </div>
+                <div class="card-details">
+                    <span id="cpuCount">Cores: --</span>
+                    <span id="cpuTemp">Temp: --</span>
+                    <span id="cpuModel">Model: --</span>
+                </div>
+            </div>
+
+            <!-- RAM Card -->
+            <div class="card glass" id="ramCard">
+                <div class="card-header">
+                    <h2>RAM Usage</h2>
+                    <span class="badge" id="ramBadge">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="ramBar" style="width: 0%"></div>
+                </div>
+                <div class="card-details">
+                    <span id="ramUsed">Used: -- GB</span>
+                    <span id="ramTotal">Total: -- GB</span>
+                </div>
+            </div>
+
+            <!-- Disk Card -->
+            <div class="card glass" id="diskCard">
+                <div class="card-header">
+                    <h2>Disk Usage</h2>
+                    <span class="badge" id="diskBadge">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="diskBar" style="width: 0%"></div>
+                </div>
+                <div class="card-details">
+                    <span id="diskUsed">Used: -- GB</span>
+                    <span id="diskTotal">Total: -- GB</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Charts Section -->
+        <section class="charts-section glass">
+            <div class="section-header">
+                <h2>Historical Performance</h2>
+                <div class="chart-controls">
+                    <button class="btn active" id="btn-1h" onclick="setChartRange('1h')">1 Hour</button>
+                    <button class="btn" id="btn-24h" onclick="setChartRange('24h')">24 Hours</button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="metricsChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Logs Section -->
+        <section class="logs-section glass">
+            <div class="section-header">
+                <h2>System Logs (DuckDB backed)</h2>
+                <div class="logs-controls">
+                    <input type="text" id="logSearch" placeholder="Search logs..." oninput="fetchLogs()">
+                    <select id="logLevel" onchange="fetchLogs()">
+                        <option value="ALL">All Levels</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARN">WARN</option>
+                        <option value="ERROR">ERROR</option>
+                    </select>
+                    <button class="btn btn-danger" onclick="clearLogs()">Clear DB Logs</button>
+                </div>
+            </div>
+            <div class="terminal-container">
+                <div class="terminal-header">
+                    <div class="terminal-buttons">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <div class="terminal-title">sentinel_logs.sh</div>
+                </div>
+                <div class="terminal-body" id="logTerminal">
+                    <div class="log-line system-line">[SYSTEM] Initializing log terminal...</div>
+                </div>
+            </div>
+        </section>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

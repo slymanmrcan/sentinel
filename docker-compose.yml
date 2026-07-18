@@ -1,0 +1,37 @@
+services:
+  sentinel:
+    build: .
+    container_name: sentinel
+    restart: unless-stopped
+    expose:
+      - "8000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+    environment:
+      - PORT=8000
+      - DB_PATH=/data/metrics.db
+      - HOST_PROC=/host/proc
+      - HOST_SYS=/host/sys
+      - HOST_ROOT=/host/root
+      # Uncomment and configure these to secure the web panel and APIs
+      # - AUTH_USER=admin
+      # - AUTH_PASSWORD=change-this-secure-password
+    volumes:
+      - ./data:/data
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      # Mount host root to monitor host disk usage
+      - /:/host/root:ro
+    networks:
+      - infra_net
+
+networks:
+  infra_net:
+    external: true

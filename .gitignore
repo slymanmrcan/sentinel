@@ -1,0 +1,21 @@
+# Binaries
+sentinel
+
+# Databases
+*.db
+*.db.wal
+
+# Local Docker Data Volume
+/data/
+
+# OS files
+.DS_Store
+
+# IDE configurations
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
