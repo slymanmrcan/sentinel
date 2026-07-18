@@ -51,34 +51,37 @@ async function fetchRealtimeMetrics() {
         // Update CPU Card
         const cpu = data.cpu_percent ? data.cpu_percent.toFixed(1) : '0.0';
         document.getElementById('cpuBadge').textContent = `${cpu}%`;
-        document.getElementById('cpuBar').style.width = `${cpu}%`;
-        document.getElementById('cpuCount').textContent = `Cores: ${data.cpu_cores || '--'}`;
+        document.getElementById('cpuBadgeInner').textContent = `${cpu}%`;
+        document.getElementById('cpuCircle').setAttribute('stroke-dasharray', `${Math.round(data.cpu_percent || 0)}, 100`);
+        document.getElementById('cpuCount').innerHTML = `<strong>${data.cpu_cores || '--'}</strong>`;
         const temp = data.cpu_temp && data.cpu_temp > 0 ? `${data.cpu_temp.toFixed(1)}°C` : '--';
-        document.getElementById('cpuTemp').textContent = `Temp: ${temp}`;
+        document.getElementById('cpuTemp').innerHTML = `<strong>${temp}</strong>`;
         const load1 = data.load_1 ? data.load_1.toFixed(2) : '0.00';
         const load5 = data.load_5 ? data.load_5.toFixed(2) : '0.00';
         const load15 = data.load_15 ? data.load_15.toFixed(2) : '0.00';
-        document.getElementById('cpuLoad').textContent = `Load: ${load1}, ${load5}, ${load15}`;
-        document.getElementById('cpuModel').textContent = data.cpu_model || '--';
-        setCardColor('cpuBar', data.cpu_percent);
+        document.getElementById('cpuLoad').innerHTML = `<strong>${load1}, ${load5}, ${load15}</strong>`;
+        document.getElementById('cpuModel').innerHTML = `<strong>${data.cpu_model || '--'}</strong>`;
+        setCircleColor('cpuCircle', data.cpu_percent);
 
         // Update RAM Card
         const ram = data.ram_percent ? data.ram_percent.toFixed(1) : '0.0';
         document.getElementById('ramBadge').textContent = `${ram}%`;
-        document.getElementById('ramBar').style.width = `${ram}%`;
-        document.getElementById('ramUsed').textContent = `Used: ${formatBytesToGB(data.ram_used)} GB`;
-        document.getElementById('ramTotal').textContent = `Total: ${formatBytesToGB(data.ram_total)} GB`;
+        document.getElementById('ramBadgeInner').textContent = `${ram}%`;
+        document.getElementById('ramCircle').setAttribute('stroke-dasharray', `${Math.round(data.ram_percent || 0)}, 100`);
+        document.getElementById('ramUsed').innerHTML = `<strong>${formatBytesToGB(data.ram_used)} GB</strong>`;
+        document.getElementById('ramTotal').innerHTML = `<strong>${formatBytesToGB(data.ram_total)} GB</strong>`;
         const swapPercent = data.swap_percent ? data.swap_percent.toFixed(1) : '0.0';
-        document.getElementById('swapInfo').textContent = `Swap: ${formatBytesToGB(data.swap_used)} GB / ${formatBytesToGB(data.swap_total)} GB (${swapPercent}%)`;
-        setCardColor('ramBar', data.ram_percent);
+        document.getElementById('swapInfo').innerHTML = `<strong>${formatBytesToGB(data.swap_used)} GB / ${formatBytesToGB(data.swap_total)} GB (${swapPercent}%)</strong>`;
+        setCircleColor('ramCircle', data.ram_percent);
 
         // Update Disk Card
         const disk = data.disk_percent ? data.disk_percent.toFixed(1) : '0.0';
         document.getElementById('diskBadge').textContent = `${disk}%`;
-        document.getElementById('diskBar').style.width = `${disk}%`;
-        document.getElementById('diskUsed').textContent = `Used: ${formatBytesToGB(data.disk_used)} GB`;
-        document.getElementById('diskTotal').textContent = `Total: ${formatBytesToGB(data.disk_total)} GB`;
-        setCardColor('diskBar', data.disk_percent);
+        document.getElementById('diskBadgeInner').textContent = `${disk}%`;
+        document.getElementById('diskCircle').setAttribute('stroke-dasharray', `${Math.round(data.disk_percent || 0)}, 100`);
+        document.getElementById('diskUsed').innerHTML = `<strong>${formatBytesToGB(data.disk_used)} GB</strong>`;
+        document.getElementById('diskTotal').innerHTML = `<strong>${formatBytesToGB(data.disk_total)} GB</strong>`;
+        setCircleColor('diskCircle', data.disk_percent);
 
         // Update Main Status Indicator
         const maxVal = Math.max(data.cpu_percent || 0, data.ram_percent || 0);
@@ -117,15 +120,19 @@ async function fetchRealtimeMetrics() {
     }
 }
 
-// Adjust colors based on usage levels
-function setCardColor(elementId, value) {
-    const el = document.getElementById(elementId);
+// Adjust colors for circular charts based on usage levels
+function setCircleColor(circleId, value) {
+    const el = document.getElementById(circleId);
+    if (!el) return;
     if (value > 85) {
-        el.style.background = 'linear-gradient(90deg, #ef4444 0%, #f43f5e 100%)';
+        el.style.stroke = '#f87171'; // Danger (red)
     } else if (value > 70) {
-        el.style.background = 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)';
+        el.style.stroke = '#fbbf24'; // Warning (yellow)
     } else {
-        el.style.background = 'linear-gradient(90deg, #6366f1 0%, #a78bfa 100%)';
+        // Default base colors
+        if (circleId === 'cpuCircle') el.style.stroke = '#818cf8';
+        if (circleId === 'ramCircle') el.style.stroke = '#10b981';
+        if (circleId === 'diskCircle') el.style.stroke = '#06b6d4';
     }
 }
 

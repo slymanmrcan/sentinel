@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -21,19 +21,19 @@
             </div>
             <div class="sys-info">
                 <div class="info-item">
-                    <span class="label">Host:</span>
+                    <span class="label">Host</span>
                     <span class="value" id="hostName">Loading...</span>
                 </div>
                 <div class="info-item">
-                    <span class="label">Uptime:</span>
+                    <span class="label">Uptime</span>
                     <span class="value" id="uptime">Loading...</span>
                 </div>
                 <div class="info-item">
-                    <span class="label">OS:</span>
+                    <span class="label">OS</span>
                     <span class="value" id="osType">Loading...</span>
                 </div>
                 <div class="info-item">
-                    <span class="label">Processes:</span>
+                    <span class="label">Processes</span>
                     <span class="value" id="processes">Loading...</span>
                 </div>
             </div>
@@ -47,16 +47,33 @@
                     <h2>CPU Usage</h2>
                     <span class="badge" id="cpuBadge">0%</span>
                 </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar" id="cpuBar" style="width: 0%"></div>
+                
+                <!-- Circular Chart -->
+                <div class="circle-chart-container">
+                    <svg viewBox="0 0 36 36" class="circular-chart">
+                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="circle" id="cpuCircle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <div class="circle-value" id="cpuBadgeInner">0%</div>
                 </div>
-                <div class="card-details">
-                    <span id="cpuCount">Cores: --</span>
-                    <span id="cpuTemp">Temp: --</span>
-                    <span id="cpuLoad">Load: --</span>
-                </div>
-                <div class="card-details" style="margin-top: 0.2rem; font-size: 0.8rem;">
-                    <span id="cpuModel" style="max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Model: --</span>
+
+                <div class="card-details-wrapper">
+                    <div class="card-details">
+                        <span>Cores</span>
+                        <span id="cpuCount"><strong>--</strong></span>
+                    </div>
+                    <div class="card-details">
+                        <span>Temp</span>
+                        <span id="cpuTemp"><strong>--</strong></span>
+                    </div>
+                    <div class="card-details">
+                        <span>Load Avg</span>
+                        <span id="cpuLoad"><strong>--</strong></span>
+                    </div>
+                    <div class="card-details">
+                        <span>Model</span>
+                        <span id="cpuModel" style="max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><strong>--</strong></span>
+                    </div>
                 </div>
             </div>
 
@@ -66,15 +83,29 @@
                     <h2>RAM Usage</h2>
                     <span class="badge" id="ramBadge">0%</span>
                 </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar" id="ramBar" style="width: 0%"></div>
+
+                <!-- Circular Chart -->
+                <div class="circle-chart-container">
+                    <svg viewBox="0 0 36 36" class="circular-chart">
+                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="circle" id="ramCircle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <div class="circle-value" id="ramBadgeInner">0%</div>
                 </div>
-                <div class="card-details">
-                    <span id="ramUsed">Used: -- GB</span>
-                    <span id="ramTotal">Total: -- GB</span>
-                </div>
-                <div class="card-details" style="margin-top: 0.2rem; font-size: 0.8rem;">
-                    <span id="swapInfo">Swap: -- GB</span>
+
+                <div class="card-details-wrapper">
+                    <div class="card-details">
+                        <span>Used</span>
+                        <span id="ramUsed"><strong>--</strong></span>
+                    </div>
+                    <div class="card-details">
+                        <span>Total</span>
+                        <span id="ramTotal"><strong>--</strong></span>
+                    </div>
+                    <div class="card-details">
+                        <span>Swap</span>
+                        <span id="swapInfo"><strong>--</strong></span>
+                    </div>
                 </div>
             </div>
 
@@ -84,12 +115,25 @@
                     <h2>Disk Usage</h2>
                     <span class="badge" id="diskBadge">0%</span>
                 </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar" id="diskBar" style="width: 0%"></div>
+
+                <!-- Circular Chart -->
+                <div class="circle-chart-container">
+                    <svg viewBox="0 0 36 36" class="circular-chart">
+                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="circle" id="diskCircle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <div class="circle-value" id="diskBadgeInner">0%</div>
                 </div>
-                <div class="card-details">
-                    <span id="diskUsed">Used: -- GB</span>
-                    <span id="diskTotal">Total: -- GB</span>
+
+                <div class="card-details-wrapper">
+                    <div class="card-details">
+                        <span>Used</span>
+                        <span id="diskUsed"><strong>--</strong></span>
+                    </div>
+                    <div class="card-details">
+                        <span>Total</span>
+                        <span id="diskTotal"><strong>--</strong></span>
+                    </div>
                 </div>
             </div>
         </main>
