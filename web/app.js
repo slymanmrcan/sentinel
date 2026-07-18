@@ -46,6 +46,7 @@ async function fetchRealtimeMetrics() {
         const hours = Math.floor((uptimeSeconds % 86400) / 3600);
         const minutes = Math.floor((uptimeSeconds % 3600) / 60);
         document.getElementById('uptime').textContent = `${days}d ${hours}h ${minutes}m`;
+        document.getElementById('processes').textContent = data.processes || '--';
 
         // Update CPU Card
         const cpu = data.cpu_percent ? data.cpu_percent.toFixed(1) : '0.0';
@@ -54,6 +55,10 @@ async function fetchRealtimeMetrics() {
         document.getElementById('cpuCount').textContent = `Cores: ${data.cpu_cores || '--'}`;
         const temp = data.cpu_temp && data.cpu_temp > 0 ? `${data.cpu_temp.toFixed(1)}°C` : '--';
         document.getElementById('cpuTemp').textContent = `Temp: ${temp}`;
+        const load1 = data.load_1 ? data.load_1.toFixed(2) : '0.00';
+        const load5 = data.load_5 ? data.load_5.toFixed(2) : '0.00';
+        const load15 = data.load_15 ? data.load_15.toFixed(2) : '0.00';
+        document.getElementById('cpuLoad').textContent = `Load: ${load1}, ${load5}, ${load15}`;
         document.getElementById('cpuModel').textContent = data.cpu_model || '--';
         setCardColor('cpuBar', data.cpu_percent);
 
@@ -63,6 +68,8 @@ async function fetchRealtimeMetrics() {
         document.getElementById('ramBar').style.width = `${ram}%`;
         document.getElementById('ramUsed').textContent = `Used: ${formatBytesToGB(data.ram_used)} GB`;
         document.getElementById('ramTotal').textContent = `Total: ${formatBytesToGB(data.ram_total)} GB`;
+        const swapPercent = data.swap_percent ? data.swap_percent.toFixed(1) : '0.0';
+        document.getElementById('swapInfo').textContent = `Swap: ${formatBytesToGB(data.swap_used)} GB / ${formatBytesToGB(data.swap_total)} GB (${swapPercent}%)`;
         setCardColor('ramBar', data.ram_percent);
 
         // Update Disk Card

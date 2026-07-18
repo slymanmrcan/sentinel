@@ -20,6 +20,7 @@ import (
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
@@ -35,15 +36,22 @@ type RealtimeResponse struct {
 	CPUCores    int       `json:"cpu_cores"`
 	CPUModel    string    `json:"cpu_model"`
 	CPUTemp     float64   `json:"cpu_temp"`
+	Load1       float64   `json:"load_1"`
+	Load5       float64   `json:"load_5"`
+	Load15      float64   `json:"load_15"`
 	RAMPercent  float64   `json:"ram_percent"`
 	RAMUsed     uint64    `json:"ram_used"`
 	RAMTotal    uint64    `json:"ram_total"`
+	SwapPercent float64   `json:"swap_percent"`
+	SwapUsed    uint64    `json:"swap_used"`
+	SwapTotal   uint64    `json:"swap_total"`
 	DiskPercent float64   `json:"disk_percent"`
 	DiskUsed    uint64    `json:"disk_used"`
 	DiskTotal   uint64    `json:"disk_total"`
 	OS          string    `json:"os"`
 	HostName    string    `json:"host_name"`
 	Uptime      uint64    `json:"uptime"`
+	Processes   uint64    `json:"processes"`
 }
 
 var (
@@ -77,17 +85,33 @@ func main() {
 			disk_used UBIGINT,
 			disk_total UBIGINT,
 			source VARCHAR,
-			cpu_temp DOUBLE
+			cpu_temp DOUBLE,
+			load_1 DOUBLE,
+			load_5 DOUBLE,
+			load_15 DOUBLE,
+			processes UBIGINT,
+			swap_percent DOUBLE,
+			swap_used UBIGINT,
+			swap_total UBIGINT
 		)
 	`)
 	if err != nil {
 		log.Fatal("failed to create metrics table: ", err)
 	}
 
-	// Dynamic alteration support to migrate older metrics table to include cpu_temp
-	_, err = db.Exec(`ALTER TABLE metrics ADD COLUMN IF NOT EXISTS cpu_temp DOUBLE`)
-	if err != nil {
-		log.Printf("Alter table metrics failed (might already be up to date): %v", err)
+	// Migrations: Alter table metrics to include newer columns dynamically
+	migrations := []string{
+		`ALTER TABLE metrics ADD COLUMN IF NOT EXISTS cpu_temp DOUBLE`,
+		`ALTER TABLE metrics ADD COLUMN IF NOT EXISTS load_1 DOUBLE`,
+		`ALTER TABLE metrics ADD COLUMN IF NOT EXISTS load_5 DOUBLE`,
+		`ALTER TABLE metrics ADD COLUMN IF NOT EXISTS load_15 DOUBLE`,
+		`ALTER TABLE metrics ADD COLUMN IF NOT EXISTS processes UBIGINT`,
+		`ALTER TABLE metrics ADD COLUMN IF NOT EXISTS swap_percent DOUBLE`,
+		`ALTER TABLE metrics ADD COLUMN IF NOT EXISTS swap_used UBIGINT`,
+		`ALTER TABLE metrics ADD COLUMN IF NOT EXISTS swap_total UBIGINT`,
+	}
+	for _, m := range migrations {
+		_, _ = db.Exec(m)
 	}
 
 	_, err = db.Exec(`
@@ -443,6 +467,97 @@ func startCollector(defaultSource string) {
 	}
 }
 
+// Read CPU temperature directly from sysfs (bulletproof on Dockerized ARM/Linux servers)
+func readCPUTemperature() float64 {
+	paths := []string{
+		"/sys/class/thermal",
+		"/host/sys/class/thermal",
+	}
+
+	hostSys := os.Getenv("HOST_SYS")
+	if hostSys != "" {
+		paths = append([]string{hostSys + "/class/thermal"}, paths...)
+	}
+
+	for _, basePath := range paths {
+		files, err := os.ReadDir(basePath)
+		if err != nil {
+			continue
+		}
+
+		for _, file := range files {
+			if strings.HasPrefix(file.Name(), "thermal_zone") {
+				tempPath := fmt.Sprintf("%s/%s/temp", basePath, file.Name())
+				data, err := os.ReadFile(tempPath)
+				if err == nil {
+					tempStr := strings.TrimSpace(string(data))
+					var millidegrees float64
+					if _, err := fmt.Sscanf(tempStr, "%f", &millidegrees); err == nil {
+						val := millidegrees / 1000.0
+						if val > 0 && val < 120 {
+							return val
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to hwmon paths
+	hwmonPaths := []string{
+		"/sys/class/hwmon",
+		"/host/sys/class/hwmon",
+	}
+	if hostSys != "" {
+		hwmonPaths = append([]string{hostSys + "/class/hwmon"}, hwmonPaths...)
+	}
+
+	for _, basePath := range hwmonPaths {
+		files, err := os.ReadDir(basePath)
+		if err != nil {
+			continue
+		}
+		for _, file := range files {
+			hwPath := fmt.Sprintf("%s/%s", basePath, file.Name())
+			hwFiles, err := os.ReadDir(hwPath)
+			if err != nil {
+				continue
+			}
+			for _, hwFile := range hwFiles {
+				if strings.HasPrefix(hwFile.Name(), "temp") && strings.HasSuffix(hwFile.Name(), "_input") {
+					data, err := os.ReadFile(fmt.Sprintf("%s/%s", hwPath, hwFile.Name()))
+					if err == nil {
+						tempStr := strings.TrimSpace(string(data))
+						var millidegrees float64
+						if _, err := fmt.Sscanf(tempStr, "%f", &millidegrees); err == nil {
+							val := millidegrees / 1000.0
+							if val > 0 && val < 120 {
+								return val
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to gopsutil sensors read
+	temps, err := host.SensorsTemperatures()
+	if err == nil {
+		for _, t := range temps {
+			name := strings.ToLower(t.SensorKey)
+			if strings.Contains(name, "cpu") || strings.Contains(name, "core") || strings.Contains(name, "temp") {
+				return t.Temperature
+			}
+		}
+		if len(temps) > 0 {
+			return temps[0].Temperature
+		}
+	}
+
+	return 0.0
+}
+
 func collectAndStore(defaultSource string, cpuCores int, cpuModel, osName string) {
 	cpuPercents, err := cpu.Percent(0, false)
 	var cpuPercent float64
@@ -457,6 +572,15 @@ func collectAndStore(defaultSource string, cpuCores int, cpuModel, osName string
 		ramPercent = vmStat.UsedPercent
 		ramUsed = vmStat.Used
 		ramTotal = vmStat.Total
+	}
+
+	swapStat, _ := mem.SwapMemory()
+	var swapPercent float64
+	var swapUsed, swapTotal uint64
+	if swapStat != nil {
+		swapPercent = swapStat.UsedPercent
+		swapUsed = swapStat.Used
+		swapTotal = swapStat.Total
 	}
 
 	diskPath := os.Getenv("HOST_ROOT")
@@ -474,27 +598,23 @@ func collectAndStore(defaultSource string, cpuCores int, cpuModel, osName string
 
 	hStat, _ := host.Info()
 	var uptime uint64
+	var processes uint64
 	hostname := defaultSource
 	if hStat != nil {
 		uptime = hStat.Uptime
 		hostname = hStat.Hostname
+		processes = hStat.Procs
 	}
 
-	// Read CPU Temperature
-	var cpuTemp float64
-	temps, err := host.SensorsTemperatures()
-	if err == nil {
-		for _, t := range temps {
-			name := strings.ToLower(t.SensorKey)
-			if strings.Contains(name, "cpu") || strings.Contains(name, "core") || strings.Contains(name, "temp") {
-				cpuTemp = t.Temperature
-				break
-			}
-		}
-		if cpuTemp == 0.0 && len(temps) > 0 {
-			cpuTemp = temps[0].Temperature
-		}
+	loadStat, err := load.Avg()
+	var load1, load5, load15 float64
+	if err == nil && loadStat != nil {
+		load1 = loadStat.Load1
+		load5 = loadStat.Load5
+		load15 = loadStat.Load15
 	}
+
+	cpuTemp := readCPUTemperature()
 
 	now := time.Now()
 
@@ -506,24 +626,31 @@ func collectAndStore(defaultSource string, cpuCores int, cpuModel, osName string
 		CPUCores:    cpuCores,
 		CPUModel:    cpuModel,
 		CPUTemp:     cpuTemp,
+		Load1:       load1,
+		Load5:       load5,
+		Load15:      load15,
 		RAMPercent:  ramPercent,
 		RAMUsed:     ramUsed,
 		RAMTotal:    ramTotal,
+		SwapPercent: swapPercent,
+		SwapUsed:    swapUsed,
+		SwapTotal:   swapTotal,
 		DiskPercent: diskPercent,
 		DiskUsed:    diskUsed,
 		DiskTotal:   diskTotal,
 		OS:          osName,
 		HostName:    hostname,
 		Uptime:      uptime,
+		Processes:   processes,
 	}
 	mu.Unlock()
 
 	// Persist to DuckDB
 	if db != nil {
 		_, err = db.Exec(`
-			INSERT INTO metrics (ts, cpu_percent, ram_percent, ram_used, ram_total, disk_percent, disk_used, disk_total, source, cpu_temp)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, now, cpuPercent, ramPercent, ramUsed, ramTotal, diskPercent, diskUsed, diskTotal, hostname, cpuTemp)
+			INSERT INTO metrics (ts, cpu_percent, ram_percent, ram_used, ram_total, disk_percent, disk_used, disk_total, source, cpu_temp, load_1, load_5, load_15, processes, swap_percent, swap_used, swap_total)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, now, cpuPercent, ramPercent, ramUsed, ramTotal, diskPercent, diskUsed, diskTotal, hostname, cpuTemp, load1, load5, load15, processes, swapPercent, swapUsed, swapTotal)
 		if err != nil {
 			log.Printf("Collector: DB insert failed: %v", err)
 		}

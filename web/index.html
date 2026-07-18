@@ -32,6 +32,10 @@
                     <span class="label">OS:</span>
                     <span class="value" id="osType">Loading...</span>
                 </div>
+                <div class="info-item">
+                    <span class="label">Processes:</span>
+                    <span class="value" id="processes">Loading...</span>
+                </div>
             </div>
         </header>
 
@@ -49,7 +53,10 @@
                 <div class="card-details">
                     <span id="cpuCount">Cores: --</span>
                     <span id="cpuTemp">Temp: --</span>
-                    <span id="cpuModel">Model: --</span>
+                    <span id="cpuLoad">Load: --</span>
+                </div>
+                <div class="card-details" style="margin-top: 0.2rem; font-size: 0.8rem;">
+                    <span id="cpuModel" style="max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Model: --</span>
                 </div>
             </div>
 
@@ -65,6 +72,9 @@
                 <div class="card-details">
                     <span id="ramUsed">Used: -- GB</span>
                     <span id="ramTotal">Total: -- GB</span>
+                </div>
+                <div class="card-details" style="margin-top: 0.2rem; font-size: 0.8rem;">
+                    <span id="swapInfo">Swap: -- GB</span>
                 </div>
             </div>
 
