@@ -480,51 +480,74 @@ header {
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* Log Colors */
-.log-line {
+/* Structured Log Row Styling */
+.log-row {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.015);
+    border-radius: 6px;
+    transition: background 0.15s ease, transform 0.1s ease;
     word-break: break-all;
-    border-left: 2px solid transparent;
-    padding-left: 0.8rem;
-    transition: background 0.15s ease;
 }
 
-.log-line:hover {
-    background: rgba(255, 255, 255, 0.015);
+.log-row:hover {
+    background: rgba(255, 255, 255, 0.02);
+    transform: translateX(2px);
 }
 
-.log-time {
+.log-time-badge {
     color: #57606a;
-    margin-right: 0.6rem;
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    min-width: 70px;
 }
 
-.log-level-info {
-    color: #58a6ff;
-    font-weight: 500;
+.log-level-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    min-width: 60px;
+    justify-content: center;
+    letter-spacing: 0.02em;
 }
 
-.log-level-warn {
-    color: var(--warning);
-    font-weight: 500;
+.log-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
 }
 
-.log-level-error {
-    color: var(--danger);
-    font-weight: 500;
+.log-source-tag {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: #34d399; /* Emerald */
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    min-width: 80px;
+    text-align: center;
+    text-transform: lowercase;
 }
 
-.log-source {
-    color: #7ee787; /* Emerald tint */
-    margin-left: 0.6rem;
-    margin-right: 0.6rem;
-}
-
-.log-msg {
+.log-message-text {
     color: #c9d1d9;
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    flex-grow: 1;
 }
 
 .system-line {
     color: var(--text-muted);
     font-style: italic;
+    font-size: 0.8rem;
 }
 
 /* Responsive adjustments */

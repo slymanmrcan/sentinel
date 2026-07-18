@@ -213,7 +213,7 @@ function renderChart(labels, cpuData, ramData) {
             scales: {
                 x: {
                     grid: { color: 'rgba(255, 255, 255, 0.01)' },
-                    ticks: { color: '#8b949e', font: { family: 'Outfit' } }
+                    ticks: { color: '#8b949e', font: { family: 'Outfit' }, maxTicksLimit: 10 }
                 },
                 y: {
                     min: 0,
@@ -253,17 +253,31 @@ async function fetchLogs() {
 
         let html = '';
         logs.forEach(log => {
-            const timeStr = new Date(log.ts).toLocaleString();
-            let levelClass = 'log-level-info';
-            if (log.level === 'WARN') levelClass = 'log-level-warn';
-            if (log.level === 'ERROR') levelClass = 'log-level-error';
+            const dateObj = new Date(log.ts);
+            const timeFormatted = dateObj.toTimeString().split(' ')[0];
+            const dateFormatted = dateObj.toLocaleDateString();
+
+            let badgeColor = 'rgba(59, 130, 246, 0.08)';
+            let textColor = '#60a5fa';
+            let dotColor = '#3b82f6';
+            if (log.level === 'WARN') {
+                badgeColor = 'rgba(245, 158, 11, 0.08)';
+                textColor = '#fbbf24';
+                dotColor = '#f59e0b';
+            } else if (log.level === 'ERROR') {
+                badgeColor = 'rgba(239, 68, 68, 0.08)';
+                textColor = '#f87171';
+                dotColor = '#ef4444';
+            }
 
             html += `
-                <div class="log-line">
-                    <span class="log-time">[${timeStr}]</span>
-                    <span class="${levelClass}">${log.level}</span>
-                    <span class="log-source">[${log.source}]</span>
-                    <span class="log-msg">${escapeHTML(log.message)}</span>
+                <div class="log-row">
+                    <span class="log-time-badge" title="${dateFormatted}">${timeFormatted}</span>
+                    <span class="log-level-badge" style="background: ${badgeColor}; color: ${textColor}; border: 1px solid rgba(${dotColor === '#3b82f6' ? '59,130,246' : dotColor === '#f59e0b' ? '245,158,11' : '239,68,68'}, 0.15)">
+                        <span class="log-dot" style="background: ${dotColor}"></span>${log.level}
+                    </span>
+                    <span class="log-source-tag">${log.source}</span>
+                    <span class="log-message-text">${escapeHTML(log.message)}</span>
                 </div>
             `;
         });
