@@ -4,6 +4,8 @@ services:
     container_name: sentinel
     pid: "host"
     restart: unless-stopped
+    read_only: true
+    init: true
     expose:
       - "8000"
     security_opt:
@@ -30,6 +32,8 @@ services:
       - /sys:/host/sys:ro
       # Mount host root to monitor host disk usage
       - /:/host/root:ro
+    tmpfs:
+      - /tmp:size=16m,mode=1777
     networks:
       - infra_net
 

@@ -2,20 +2,25 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -62,6 +67,10 @@ var (
 	mu          sync.RWMutex
 	db          *sql.DB
 )
+
+const maxLogBodyBytes = 16 << 10
+
+var logSourcePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/ -]{0,63}$`)
 
 func main() {
 	// Database Path configuration
@@ -166,8 +175,13 @@ func main() {
 
 	// Configure HTTP Server with Request Logging middleware
 	server := &http.Server{
-		Addr:    ":" + port,
-		Handler: requestLogger(http.DefaultServeMux),
+		Addr:              ":" + port,
+		Handler:           securityHeaders(requestLogger(http.DefaultServeMux)),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	// Setup Graceful Shutdown channel listening for OS signals
@@ -208,7 +222,8 @@ func main() {
 
 // Write a log entry to DuckDB & Standard Output
 func insertLog(level, message, source string) {
-	log.Printf("[%s] [%s] %s\n", level, source, message)
+	consoleMessage := strings.NewReplacer("\r", `\r`, "\n", `\n`).Replace(message)
+	log.Printf("[%s] [%s] %s\n", level, source, consoleMessage)
 
 	if db == nil {
 		return
@@ -223,6 +238,12 @@ func insertLog(level, message, source string) {
 
 // --- Middlewares ---
 
+func credentialsMatch(provided, expected string) bool {
+	providedHash := sha256.Sum256([]byte(provided))
+	expectedHash := sha256.Sum256([]byte(expected))
+	return subtle.ConstantTimeCompare(providedHash[:], expectedHash[:]) == 1
+}
+
 // Basic Auth middleware for HandlerFunc
 func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -233,7 +254,7 @@ func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		u, p, ok := r.BasicAuth()
-		if !ok || u != user || p != pass {
+		if !ok || !credentialsMatch(u, user) || !credentialsMatch(p, pass) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Sentinel System"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -252,10 +273,24 @@ func basicAuthHandler(next http.Handler) http.Handler {
 			return
 		}
 		u, p, ok := r.BasicAuth()
-		if !ok || u != user || p != pass {
+		if !ok || !credentialsMatch(u, user) || !credentialsMatch(p, pass) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Sentinel System"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		if r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("Cache-Control", "no-store")
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -279,6 +314,10 @@ func requestLogger(next http.Handler) http.Handler {
 
 // Handler: GET /healthz
 func handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if db == nil {
 		http.Error(w, "database connection is uninitialized", http.StatusInternalServerError)
 		return
@@ -295,6 +334,10 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 
 // Handler: GET /api/metrics/realtime
 func handleRealtimeMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	mu.RLock()
 	defer mu.RUnlock()
@@ -305,6 +348,10 @@ func handleRealtimeMetrics(w http.ResponseWriter, r *http.Request) {
 
 // Handler: GET /api/metrics/history
 func handleHistoryMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	timeRange := r.URL.Query().Get("range")
 
@@ -407,21 +454,24 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case http.MethodPost:
-		var entry struct {
-			Level   string `json:"level"`
-			Message string `json:"message"`
-			Source  string `json:"source"`
+		r.Body = http.MaxBytesReader(w, r.Body, maxLogBodyBytes)
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+
+		var entry logInput
+		if err := decoder.Decode(&entry); err != nil {
+			http.Error(w, "invalid log payload", http.StatusBadRequest)
+			return
 		}
-		if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if err := decoder.Decode(&struct{}{}); err != io.EOF {
+			http.Error(w, "request body must contain a single JSON object", http.StatusBadRequest)
 			return
 		}
 
-		if entry.Level == "" {
-			entry.Level = "INFO"
-		}
-		if entry.Source == "" {
-			entry.Source = "external"
+		entry, err := normalizeLogInput(entry)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		insertLog(entry.Level, entry.Message, entry.Source)
@@ -439,6 +489,43 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+type logInput struct {
+	Level   string `json:"level"`
+	Message string `json:"message"`
+	Source  string `json:"source"`
+}
+
+func normalizeLogInput(entry logInput) (logInput, error) {
+	entry.Level = strings.ToUpper(strings.TrimSpace(entry.Level))
+	entry.Message = strings.TrimSpace(entry.Message)
+	entry.Source = strings.TrimSpace(entry.Source)
+
+	if entry.Level == "" {
+		entry.Level = "INFO"
+	}
+	switch entry.Level {
+	case "INFO", "WARN", "ERROR":
+	default:
+		return logInput{}, fmt.Errorf("level must be INFO, WARN, or ERROR")
+	}
+
+	if entry.Message == "" {
+		return logInput{}, fmt.Errorf("message is required")
+	}
+	if utf8.RuneCountInString(entry.Message) > 4096 {
+		return logInput{}, fmt.Errorf("message must be at most 4096 characters")
+	}
+
+	if entry.Source == "" {
+		entry.Source = "external"
+	}
+	if !logSourcePattern.MatchString(entry.Source) {
+		return logInput{}, fmt.Errorf("source must be 1-64 characters using letters, numbers, spaces, '.', '_', ':', '/', or '-'")
+	}
+
+	return entry, nil
 }
 
 // --- Background Collector ---

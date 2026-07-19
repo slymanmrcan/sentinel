@@ -10,7 +10,7 @@ build:
 	go build -o $(BINARY_NAME) .
 
 run: build
-	@echo "Running sentinel locally on port 8080..."
+	@echo "Running sentinel locally on port 8000..."
 	./$(BINARY_NAME)
 
 clean:

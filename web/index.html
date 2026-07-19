@@ -3,257 +3,256 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
     <title>Sentinel System Monitor</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="vendor/chart.umd.min.js" defer></script>
+    <script src="app.js" defer></script>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header>
-            <div class="brand">
-                <div class="pulse-indicator status-ok" id="statusIndicator"></div>
-                <h1>Sentinel <span>System Monitor</span></h1>
-            </div>
-            <div class="sys-info">
-                <div class="info-item">
-                    <span class="label">Host</span>
-                    <span class="value" id="hostName">Loading...</span>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand-block">
+                <div class="brand-mark" aria-hidden="true">
+                    <span class="pulse-indicator status-ok" id="statusIndicator"></span>
                 </div>
-                <div class="info-item">
-                    <span class="label">Uptime</span>
-                    <span class="value" id="uptime">Loading...</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">OS</span>
-                    <span class="value" id="osType">Loading...</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">Processes</span>
-                    <span class="value" id="processes">Loading...</span>
+                <div>
+                    <p class="eyebrow">System monitor</p>
+                    <h1>Sentinel</h1>
                 </div>
             </div>
+
+            <div class="topbar-status" aria-live="polite">
+                <span class="status-chip" id="statusText">Connecting</span>
+                <span class="last-updated" id="lastUpdated">Waiting for metrics…</span>
+            </div>
+
+            <dl class="host-strip">
+                <div>
+                    <dt>Host</dt>
+                    <dd id="hostName">Loading…</dd>
+                </div>
+                <div>
+                    <dt>Uptime</dt>
+                    <dd id="uptime">Loading…</dd>
+                </div>
+                <div>
+                    <dt>OS</dt>
+                    <dd id="osType">Loading…</dd>
+                </div>
+                <div>
+                    <dt>Processes</dt>
+                    <dd id="processes">Loading…</dd>
+                </div>
+            </dl>
         </header>
 
-        <!-- Metrics Grid -->
-        <main class="metrics-grid">
-            <!-- CPU Card -->
-            <div class="card glass" id="cpuCard">
-                <div class="card-header">
-                    <h2>CPU</h2>
-                    <span class="badge" id="cpuBadge">0%</span>
-                </div>
-                
-                <!-- Circular Chart with Linear Gradients -->
-                <div class="circle-chart-container">
-                    <svg viewBox="0 0 36 36" class="circular-chart">
-                        <defs>
-                            <linearGradient id="cpuGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stop-color="#818cf8" />
-                                <stop offset="100%" stop-color="#c084fc" />
-                            </linearGradient>
-                        </defs>
-                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path class="circle" id="cpuCircle" stroke="url(#cpuGrad)" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    </svg>
-                    <div class="circle-value" id="cpuBadgeInner">0%</div>
+        <main class="dashboard">
+            <section class="overview-section" aria-labelledby="overviewTitle">
+                <div class="section-heading compact-heading">
+                    <div>
+                        <p class="eyebrow">Live overview</p>
+                        <h2 id="overviewTitle">Resource health</h2>
+                    </div>
+                    <span class="refresh-note">Updates every 2 seconds</span>
                 </div>
 
-                <div class="card-details-wrapper">
-                    <div class="card-details">
-                        <span class="detail-label">Cores</span>
-                        <span id="cpuCount" class="detail-value">--</span>
-                    </div>
-                    <div class="card-details">
-                        <span class="detail-label">Temp</span>
-                        <span id="cpuTemp" class="detail-value">--</span>
-                    </div>
-                    <div class="card-details">
-                        <span class="detail-label">Load Avg</span>
-                        <span id="cpuLoad" class="detail-value">--</span>
-                    </div>
-                    <div class="card-details">
-                        <span class="detail-label">Model</span>
-                        <span id="cpuModel" class="detail-value" style="max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">--</span>
-                    </div>
-                </div>
-            </div>
+                <div class="kpi-grid">
+                    <article class="kpi-card tone-violet" id="cpuCard">
+                        <div class="kpi-header">
+                            <div>
+                                <span class="kpi-label">CPU usage</span>
+                                <strong class="kpi-value" id="cpuValue">0.0%</strong>
+                            </div>
+                            <span class="metric-state" id="cpuState">Normal</span>
+                        </div>
+                        <div class="progress-track" aria-hidden="true">
+                            <span class="progress-fill" id="cpuBar"></span>
+                        </div>
+                        <dl class="mini-stats">
+                            <div><dt>Cores</dt><dd id="cpuCount">--</dd></div>
+                            <div><dt>Temperature</dt><dd id="cpuTemp">--</dd></div>
+                        </dl>
+                    </article>
 
-            <!-- RAM Card -->
-            <div class="card glass" id="ramCard">
-                <div class="card-header">
-                    <h2>RAM</h2>
-                    <span class="badge" id="ramBadge">0%</span>
+                    <article class="kpi-card tone-green" id="ramCard">
+                        <div class="kpi-header">
+                            <div>
+                                <span class="kpi-label">Memory</span>
+                                <strong class="kpi-value" id="ramValue">0.0%</strong>
+                            </div>
+                            <span class="metric-state" id="ramState">Normal</span>
+                        </div>
+                        <div class="progress-track" aria-hidden="true">
+                            <span class="progress-fill" id="ramBar"></span>
+                        </div>
+                        <dl class="mini-stats">
+                            <div><dt>Used</dt><dd id="ramUsed">--</dd></div>
+                            <div><dt>Total</dt><dd id="ramTotal">--</dd></div>
+                        </dl>
+                    </article>
+
+                    <article class="kpi-card tone-cyan" id="diskCard">
+                        <div class="kpi-header">
+                            <div>
+                                <span class="kpi-label">Disk</span>
+                                <strong class="kpi-value" id="diskValue">0.0%</strong>
+                            </div>
+                            <span class="metric-state" id="diskState">Normal</span>
+                        </div>
+                        <div class="progress-track" aria-hidden="true">
+                            <span class="progress-fill" id="diskBar"></span>
+                        </div>
+                        <dl class="mini-stats">
+                            <div><dt>Used</dt><dd id="diskUsed">--</dd></div>
+                            <div><dt>Total</dt><dd id="diskTotal">--</dd></div>
+                        </dl>
+                    </article>
+
+                    <article class="kpi-card tone-amber">
+                        <div class="kpi-header">
+                            <div>
+                                <span class="kpi-label">Load average</span>
+                                <strong class="kpi-value kpi-value-small" id="cpuLoad">--</strong>
+                            </div>
+                            <span class="metric-state">1 / 5 / 15m</span>
+                        </div>
+                        <div class="load-divider"></div>
+                        <dl class="mini-stats mini-stats-single">
+                            <div><dt>Swap</dt><dd id="swapInfo">--</dd></div>
+                        </dl>
+                    </article>
+                </div>
+            </section>
+
+            <section class="primary-grid" aria-label="Performance and host details">
+                <article class="panel chart-panel">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">Performance</p>
+                            <h2>Usage history</h2>
+                        </div>
+                        <div class="segmented-control" aria-label="Chart time range">
+                            <button class="range-button active" id="btn-1h" type="button" data-range="1h">1 hour</button>
+                            <button class="range-button" id="btn-24h" type="button" data-range="24h">24 hours</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="metricsChart" aria-label="CPU and memory usage chart"></canvas>
+                    </div>
+                </article>
+
+                <aside class="panel host-panel" aria-labelledby="hostDetailsTitle">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">Machine</p>
+                            <h2 id="hostDetailsTitle">Host details</h2>
+                        </div>
+                    </div>
+                    <dl class="detail-list">
+                        <div>
+                            <dt>CPU model</dt>
+                            <dd id="cpuModel">--</dd>
+                        </div>
+                        <div>
+                            <dt>Kernel</dt>
+                            <dd id="kernelPill">Loading…</dd>
+                        </div>
+                        <div>
+                            <dt>System state</dt>
+                            <dd><span class="inline-status" id="rebootPill">Checking…</span></dd>
+                        </div>
+                        <div>
+                            <dt>Monitoring mode</dt>
+                            <dd>Read-only host view</dd>
+                        </div>
+                    </dl>
+                </aside>
+            </section>
+
+            <section class="inspector-section" aria-labelledby="inspectorTitle">
+                <div class="section-heading compact-heading">
+                    <div>
+                        <p class="eyebrow">Inspector</p>
+                        <h2 id="inspectorTitle">Processes and network</h2>
+                    </div>
                 </div>
 
-                <!-- Circular Chart with Linear Gradients -->
-                <div class="circle-chart-container">
-                    <svg viewBox="0 0 36 36" class="circular-chart">
-                        <defs>
-                            <linearGradient id="ramGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stop-color="#34d399" />
-                                <stop offset="100%" stop-color="#059669" />
-                            </linearGradient>
-                        </defs>
-                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path class="circle" id="ramCircle" stroke="url(#ramGrad)" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    </svg>
-                    <div class="circle-value" id="ramBadgeInner">0%</div>
+                <div class="inspector-grid">
+                    <article class="panel table-panel">
+                        <div class="panel-title-row">
+                            <h3>Top processes</h3>
+                            <span>By memory</span>
+                        </div>
+                        <div class="table-container">
+                            <table class="inspector-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">PID</th>
+                                        <th scope="col">Process</th>
+                                        <th scope="col" class="align-right">CPU</th>
+                                        <th scope="col" class="align-right">RAM</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="processesTableBody">
+                                    <tr><td colspan="4" class="empty-cell">Loading processes…</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </article>
+
+                    <article class="panel table-panel">
+                        <div class="panel-title-row">
+                            <h3>Listening ports</h3>
+                            <span>TCP</span>
+                        </div>
+                        <div class="table-container">
+                            <table class="inspector-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Port</th>
+                                        <th scope="col">Process</th>
+                                        <th scope="col" class="align-right">PID</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="portsTableBody">
+                                    <tr><td colspan="3" class="empty-cell">Loading ports…</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="panel logs-section" aria-labelledby="logsTitle">
+                <div class="section-heading logs-heading">
+                    <div>
+                        <p class="eyebrow">Events</p>
+                        <h2 id="logsTitle">System logs <span class="count-badge" id="logCount">0</span></h2>
+                    </div>
+                    <div class="logs-controls">
+                        <label class="search-field">
+                            <span class="sr-only">Search logs</span>
+                            <input type="search" id="logSearch" placeholder="Search messages…">
+                        </label>
+                        <label>
+                            <span class="sr-only">Filter by level</span>
+                            <select id="logLevel">
+                                <option value="ALL">All levels</option>
+                                <option value="INFO">Info</option>
+                                <option value="WARN">Warning</option>
+                                <option value="ERROR">Error</option>
+                            </select>
+                        </label>
+                        <button class="danger-button" id="clearLogsButton" type="button">Clear logs</button>
+                    </div>
                 </div>
 
-                <div class="card-details-wrapper">
-                    <div class="card-details">
-                        <span class="detail-label">Used</span>
-                        <span id="ramUsed" class="detail-value">--</span>
-                    </div>
-                    <div class="card-details">
-                        <span class="detail-label">Total</span>
-                        <span id="ramTotal" class="detail-value">--</span>
-                    </div>
-                    <div class="card-details">
-                        <span class="detail-label">Swap</span>
-                        <span id="swapInfo" class="detail-value">--</span>
-                    </div>
+                <div class="log-list" id="logTerminal" aria-live="polite">
+                    <div class="empty-state">Loading logs…</div>
                 </div>
-            </div>
-
-            <!-- Disk Card -->
-            <div class="card glass" id="diskCard">
-                <div class="card-header">
-                    <h2>Disk</h2>
-                    <span class="badge" id="diskBadge">0%</span>
-                </div>
-
-                <!-- Circular Chart with Linear Gradients -->
-                <div class="circle-chart-container">
-                    <svg viewBox="0 0 36 36" class="circular-chart">
-                        <defs>
-                            <linearGradient id="diskGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stop-color="#22d3ee" />
-                                <stop offset="100%" stop-color="#0891b2" />
-                            </linearGradient>
-                        </defs>
-                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path class="circle" id="diskCircle" stroke="url(#diskGrad)" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    </svg>
-                    <div class="circle-value" id="diskBadgeInner">0%</div>
-                </div>
-
-                <div class="card-details-wrapper">
-                    <div class="card-details">
-                        <span class="detail-label">Used</span>
-                        <span id="diskUsed" class="detail-value">--</span>
-                    </div>
-                    <div class="card-details">
-                        <span class="detail-label">Total</span>
-                        <span id="diskTotal" class="detail-value">--</span>
-                    </div>
-                </div>
-            </div>
+            </section>
         </main>
-
-        <!-- Charts Section -->
-        <section class="charts-section glass">
-            <div class="section-header">
-                <h2>Historical Performance</h2>
-                <div class="chart-controls">
-                    <button class="btn active" id="btn-1h" onclick="setChartRange('1h')">1 Hour</button>
-                    <button class="btn" id="btn-24h" onclick="setChartRange('24h')">24 Hours</button>
-                </div>
-            </div>
-            <div class="chart-container">
-                <canvas id="metricsChart"></canvas>
-            </div>
-        </section>
-
-        <!-- System Inspector Section (Processes & Ports) -->
-        <section class="inspector-section glass">
-            <div class="section-header">
-                <h2>System Inspector</h2>
-                <div class="system-status-pills">
-                    <span class="status-pill" id="kernelPill">Kernel: Loading...</span>
-                    <span class="status-pill badge-neutral" id="rebootPill">No Reboot Required</span>
-                </div>
-            </div>
-            <div class="inspector-grid">
-                <!-- Top Processes Card -->
-                <div class="inspector-card">
-                    <h3>Top Processes <span>(by Memory)</span></h3>
-                    <div class="table-container">
-                        <table class="inspector-table">
-                            <thead>
-                                <tr>
-                                    <th>PID</th>
-                                    <th>Process Name</th>
-                                    <th style="text-align: right;">CPU</th>
-                                    <th style="text-align: right;">RAM</th>
-                                </tr>
-                            </thead>
-                            <tbody id="processesTableBody">
-                                <tr>
-                                    <td colspan="4" style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 1.5rem;">Loading processes...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Listening Ports Card -->
-                <div class="inspector-card">
-                    <h3>Listening Ports <span>(TCP)</span></h3>
-                    <div class="table-container">
-                        <table class="inspector-table">
-                            <thead>
-                                <tr>
-                                    <th>Port</th>
-                                    <th>Process</th>
-                                    <th style="text-align: right;">PID</th>
-                                </tr>
-                            </thead>
-                            <tbody id="portsTableBody">
-                                <tr>
-                                    <td colspan="3" style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 1.5rem;">Loading listening ports...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Logs Section -->
-        <section class="logs-section glass">
-            <div class="section-header">
-                <h2>System Logs (DuckDB backed)</h2>
-                <div class="logs-controls">
-                    <input type="text" id="logSearch" placeholder="Search logs..." oninput="fetchLogs()">
-                    <select id="logLevel" onchange="fetchLogs()">
-                        <option value="ALL">All Levels</option>
-                        <option value="INFO">INFO</option>
-                        <option value="WARN">WARN</option>
-                        <option value="ERROR">ERROR</option>
-                    </select>
-                    <button class="btn btn-danger" onclick="clearLogs()">Clear DB Logs</button>
-                </div>
-            </div>
-            <div class="terminal-container">
-                <div class="terminal-header">
-                    <div class="terminal-buttons">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-                    <div class="terminal-title">sentinel_logs.sh</div>
-                </div>
-                <div class="terminal-body" id="logTerminal">
-                    <div class="log-line system-line">[SYSTEM] Initializing log terminal...</div>
-                </div>
-            </div>
-        </section>
     </div>
-    <script src="app.js"></script>
 </body>
 </html>

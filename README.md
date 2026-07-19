@@ -7,7 +7,7 @@ Sentinel is a lightweight, zero-dependency, self-hosted system monitor built in 
 ## Features
 
 - **DuckDB Powered**: High-performance embedded query engine for fast metrics and log filtering.
-- **Embedded Web UI**: Single compiled binary includes the entire UI dashboard (Vanilla HTML/CSS/JS + Chart.js).
+- **Embedded Web UI**: Single compiled binary includes the entire UI dashboard and a pinned local Chart.js build (no runtime CDN dependency).
 - **Security First**: Supports optional Basic Authentication for dashboard & API endpoints.
 - **Docker-Optimized**: Designed to run inside Docker while safely mounting and monitoring host system metrics.
 - **Graceful Shutdown**: Intercepts OS termination signals (`SIGINT`, `SIGTERM`) to cleanly close DuckDB database files, preventing filesystem corruption.
@@ -80,6 +80,8 @@ environment:
 
 If these are set, the UI dashboard and `/api/*` endpoints will immediately require credentials. The `/healthz` endpoint remains unauthenticated for container health checking.
 
+Basic Auth is intended for local/internal access. If Sentinel is reachable over a network, place it behind an HTTPS reverse proxy so credentials are never sent over plain HTTP. Authentication remains optional for trusted local-only use.
+
 ---
 
 ## API Documentation
@@ -96,4 +98,5 @@ If these are set, the UI dashboard and `/api/*` endpoints will immediately requi
     "source": "backup_cron"
   }
   ```
+  Accepted levels are `INFO`, `WARN`, and `ERROR`. Messages are limited to 4096 characters and request bodies to 16 KiB.
 - **`DELETE /api/logs`**: Clears all logs in the database.
