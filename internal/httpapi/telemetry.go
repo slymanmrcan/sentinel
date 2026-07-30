@@ -145,11 +145,12 @@ func (s *Server) handleExportMetrics(w http.ResponseWriter, r *http.Request, _ a
 		return
 	}
 	writer := csvResponse(w, "sentinel-metrics.csv",
-		[]string{"timestamp", "cpu_percent", "memory_percent", "disk_percent", "load_1", "net_rx_bps", "net_tx_bps"})
+		[]string{"timestamp", "cpu_percent", "memory_percent", "disk_percent", "swap_percent", "load_1", "net_rx_bps", "net_tx_bps"})
 	for _, metric := range metrics {
 		_ = writer.Write([]string{
 			metric.Timestamp.Format(time.RFC3339), number(metric.CPUPercent), number(metric.RAMPercent),
-			number(metric.DiskPercent), number(metric.Load1), number(metric.NetRxBps), number(metric.NetTxBps),
+			number(metric.DiskPercent), number(metric.SwapPercent), number(metric.Load1),
+			number(metric.NetRxBps), number(metric.NetTxBps),
 		})
 	}
 	writer.Flush()

@@ -85,10 +85,11 @@ main { display: flex; flex-direction: column; gap: 22px; padding: 24px 22px 44px
 .section-title { display: flex; min-height: 28px; align-items: baseline; gap: 9px; }
 .section-title h1, .section-title h2 { margin-bottom: 0; font-size: 12px; font-weight: 560; }
 .section-title span { color: #565c5c; font-family: var(--mono); font-size: 8px; }
-.metric-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.metric-grid { display: grid; grid-template-columns: repeat(12,minmax(0,1fr)); gap: 12px; }
 .metric-card, .panel { min-width: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
 .metric-card { display: flex; min-height: 116px; flex-direction: column; padding: 13px 14px 11px; }
-.metric-card-secondary { min-height: 104px; }
+.metric-card-primary { grid-column: span 3; }
+.metric-card-secondary { min-height: 104px; grid-column: span 4; }
 .metric-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .metric-head > span { color: #7d8383; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .metric-head em { padding: 3px 5px; border: 1px solid #224635; border-radius: 2px; color: var(--green); font-family: var(--mono); font-size: 7px; font-style: normal; text-transform: uppercase; }
@@ -116,6 +117,7 @@ main { display: flex; flex-direction: column; gap: 22px; padding: 24px 22px 44px
 .series-button.cpu.active::before { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
 .series-button.memory.active::before { background: var(--violet); box-shadow: 0 0 6px var(--violet); }
 .series-button.disk.active::before { background: #697070; }
+.series-button.swap.active::before { background: var(--red); box-shadow: 0 0 6px rgba(240,91,104,.65); }
 .series-button.net.active::before { background: var(--green); }
 .series-button.active, .range-button.active { border-color: var(--line-strong); color: var(--text-soft); background: #151717; }
 .chart-wrap { position: relative; height: 260px; padding: 14px 12px 8px; }
@@ -211,6 +213,7 @@ th:not(:first-child), td:not(:first-child) { text-align: right; }
 
 @media (max-width: 1050px) {
     .metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .metric-card-primary, .metric-card-secondary { grid-column: auto; }
     .performance-grid, .analysis-grid { grid-template-columns: 1fr; }
     .machine-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
     .machine-list > div:nth-last-child(2) { border-bottom: 0; }

@@ -214,7 +214,8 @@ func rate(current, previous uint64, seconds float64) float64 {
 func (c *Collector) evaluateAnomalies(ctx context.Context, metric store.Metric) {
 	values := map[string]float64{
 		"cpu": metric.CPUPercent, "memory": metric.RAMPercent,
-		"disk": metric.DiskPercent, "load": metric.Load1,
+		"disk": metric.DiskPercent, "swap": metric.SwapPercent,
+		"load": metric.Load1,
 	}
 	for name, value := range values {
 		baseline, err := c.store.Baseline(ctx, name)
@@ -237,12 +238,29 @@ func (c *Collector) evaluateAnomalies(ctx context.Context, metric store.Metric) 
 			Value:        value,
 			BaselineMean: baseline.Mean,
 			ZScore:       zScore,
-			Message:      fmt.Sprintf("%s value %.2f is unusual for the current baseline", strings.Title(name), value),
+			Message:      fmt.Sprintf("%s value %.2f is unusual for the current baseline", metricLabel(name), value),
 		}
 		if err := c.store.InsertAnomaly(ctx, anomaly); err == nil {
 			c.lastAnomaly[name] = time.Now()
 			c.log(ctx, "WARN", anomaly.Message, "anomaly")
 		}
+	}
+}
+
+func metricLabel(metric string) string {
+	switch metric {
+	case "cpu":
+		return "CPU"
+	case "memory":
+		return "Memory"
+	case "disk":
+		return "Disk"
+	case "swap":
+		return "Swap"
+	case "load":
+		return "Load"
+	default:
+		return metric
 	}
 }
 
@@ -252,7 +270,8 @@ func (c *Collector) evaluateAlerts(ctx context.Context, metric store.Metric) {
 		return
 	}
 	values := map[string]float64{
-		"cpu": metric.CPUPercent, "memory": metric.RAMPercent, "disk": metric.DiskPercent,
+		"cpu": metric.CPUPercent, "memory": metric.RAMPercent,
+		"disk": metric.DiskPercent, "swap": metric.SwapPercent,
 	}
 	for _, rule := range rules {
 		value := values[rule.Metric]

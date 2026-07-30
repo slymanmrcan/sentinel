@@ -151,6 +151,7 @@ function renderRealtime(metric) {
     updatePercentMetric('cpu', metric.cpu_percent);
     updatePercentMetric('memory', metric.ram_percent);
     updatePercentMetric('disk', metric.disk_percent);
+    updatePercentMetric('swap', metric.swap_percent);
 
     setText('cpuCores', metric.cpu_cores || '—');
     setText('cpuTemp', metric.cpu_temp > 0 ? `${Number(metric.cpu_temp).toFixed(1)}°C` : '—');
@@ -158,7 +159,8 @@ function renderRealtime(metric) {
     setText('memoryTotal', formatBytes(metric.ram_total));
     setText('diskUsed', formatBytes(metric.disk_used));
     setText('diskTotal', formatBytes(metric.disk_total));
-    setText('swapValue', `${formatPercent(metric.swap_percent)} · ${formatBytes(metric.swap_used)}`);
+    setText('swapUsed', formatBytes(metric.swap_used));
+    setText('swapTotal', formatBytes(metric.swap_total));
 
     const loads = [metric.load_1, metric.load_5, metric.load_15].map((value) => Number(value || 0).toFixed(2));
     setText('loadValue', loads.join(' · '));
@@ -182,7 +184,12 @@ function renderRealtime(metric) {
     setText('agentName', `agent · ${metric.host_name || 'unknown'}`);
     setText('updatedAt', `updated ${new Date(metric.ts || Date.now()).toLocaleTimeString()}`);
 
-    const peak = Math.max(Number(metric.cpu_percent) || 0, Number(metric.ram_percent) || 0, Number(metric.disk_percent) || 0);
+    const peak = Math.max(
+        Number(metric.cpu_percent) || 0,
+        Number(metric.ram_percent) || 0,
+        Number(metric.disk_percent) || 0,
+        Number(metric.swap_percent) || 0
+    );
     if (peak > 90) setHealth('critical', 'Critical');
     else if (peak > 75) setHealth('warning', 'Watch');
     else setHealth('healthy', 'Healthy');
@@ -227,6 +234,7 @@ function renderChart(metrics) {
         chartDataset('CPU', '#16d9e5', metrics.map((metric) => clamp(metric.cpu_percent)), 'percent', false),
         chartDataset('RAM', '#a84df1', metrics.map((metric) => clamp(metric.ram_percent)), 'percent', false),
         chartDataset('Disk', '#697070', metrics.map((metric) => clamp(metric.disk_percent)), 'percent', true),
+        chartDataset('Swap', '#f05b68', metrics.map((metric) => clamp(metric.swap_percent)), 'percent', false),
         chartDataset('Net in', '#28d78c', metrics.map((metric) => Number(metric.net_rx_bps) || 0), 'bytes', true),
         chartDataset('Net out', '#d2a546', metrics.map((metric) => Number(metric.net_tx_bps) || 0), 'bytes', true)
     ];
@@ -314,7 +322,7 @@ function toggleSeries(button) {
     dataset.hidden = !dataset.hidden;
     button.classList.toggle('active', !dataset.hidden);
     state.chart.options.scales.bytes.display = state.chart.data.datasets
-        .slice(3)
+        .slice(4)
         .some((item) => !item.hidden);
     state.chart.update();
 }
@@ -325,7 +333,14 @@ function appendLivePoint(metric) {
     const labels = state.chart.data.labels;
     if (labels.at(-1) === label) return;
     labels.push(label);
-    const values = [metric.cpu_percent, metric.ram_percent, metric.disk_percent, metric.net_rx_bps, metric.net_tx_bps];
+    const values = [
+        metric.cpu_percent,
+        metric.ram_percent,
+        metric.disk_percent,
+        metric.swap_percent,
+        metric.net_rx_bps,
+        metric.net_tx_bps
+    ];
     state.chart.data.datasets.forEach((dataset, index) => dataset.data.push(Number(values[index]) || 0));
     if (labels.length > 360) {
         labels.shift();

@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -25,7 +27,7 @@ func (s *Store) InsertMetric(ctx context.Context, metric Metric) error {
 	return err
 }
 
-func (s *Store) History(ctx context.Context, timeRange string) ([]Metric, error) {
+func (s *Store) History(ctx context.Context, timeRange string) (metrics []Metric, err error) {
 	bucket, window := "10 SECOND", "1 HOUR"
 	switch timeRange {
 	case "6h":
@@ -57,9 +59,9 @@ func (s *Store) History(ctx context.Context, timeRange string) ([]Metric, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 
-	metrics := make([]Metric, 0)
+	metrics = make([]Metric, 0)
 	for rows.Next() {
 		var metric Metric
 		if err := rows.Scan(
@@ -83,7 +85,7 @@ func (s *Store) InsertLog(ctx context.Context, entry LogEntry) error {
 	return err
 }
 
-func (s *Store) Logs(ctx context.Context, level, query string, limit int) ([]LogEntry, error) {
+func (s *Store) Logs(ctx context.Context, level, query string, limit int) (entries []LogEntry, err error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
@@ -102,9 +104,9 @@ func (s *Store) Logs(ctx context.Context, level, query string, limit int) ([]Log
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 
-	entries := make([]LogEntry, 0)
+	entries = make([]LogEntry, 0)
 	for rows.Next() {
 		var entry LogEntry
 		if err := rows.Scan(&entry.Timestamp, &entry.Level, &entry.Message, &entry.Source); err != nil {
@@ -125,6 +127,7 @@ func (s *Store) Baseline(ctx context.Context, metric string) (Baseline, error) {
 		"cpu":    "cpu_percent",
 		"memory": "ram_percent",
 		"disk":   "disk_percent",
+		"swap":   "swap_percent",
 		"load":   "load_1",
 	}[metric]
 	if column == "" {
@@ -142,7 +145,7 @@ func (s *Store) Baseline(ctx context.Context, metric string) (Baseline, error) {
 }
 
 func (s *Store) Baselines(ctx context.Context) ([]Baseline, error) {
-	metrics := []string{"cpu", "memory", "disk", "load"}
+	metrics := []string{"cpu", "memory", "disk", "swap", "load"}
 	result := make([]Baseline, 0, len(metrics))
 	for _, metric := range metrics {
 		baseline, err := s.Baseline(ctx, metric)
@@ -163,7 +166,7 @@ func (s *Store) InsertAnomaly(ctx context.Context, anomaly Anomaly) error {
 	return err
 }
 
-func (s *Store) Anomalies(ctx context.Context, limit int) ([]Anomaly, error) {
+func (s *Store) Anomalies(ctx context.Context, limit int) (result []Anomaly, err error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
@@ -174,8 +177,8 @@ func (s *Store) Anomalies(ctx context.Context, limit int) ([]Anomaly, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := make([]Anomaly, 0)
+	defer closeRows(rows, &err)
+	result = make([]Anomaly, 0)
 	for rows.Next() {
 		var anomaly Anomaly
 		if err := rows.Scan(&anomaly.ID, &anomaly.Timestamp, &anomaly.Metric,
@@ -188,7 +191,7 @@ func (s *Store) Anomalies(ctx context.Context, limit int) ([]Anomaly, error) {
 	return result, rows.Err()
 }
 
-func (s *Store) AlertRules(ctx context.Context) ([]AlertRule, error) {
+func (s *Store) AlertRules(ctx context.Context) (result []AlertRule, err error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, name, metric, threshold, severity, enabled
 		FROM alert_rules ORDER BY name
@@ -196,8 +199,8 @@ func (s *Store) AlertRules(ctx context.Context) ([]AlertRule, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := make([]AlertRule, 0)
+	defer closeRows(rows, &err)
+	result = make([]AlertRule, 0)
 	for rows.Next() {
 		var rule AlertRule
 		if err := rows.Scan(&rule.ID, &rule.Name, &rule.Metric, &rule.Threshold, &rule.Severity, &rule.Enabled); err != nil {
@@ -217,7 +220,7 @@ func (s *Store) InsertAlertEvent(ctx context.Context, event AlertEvent) error {
 	return err
 }
 
-func (s *Store) AlertEvents(ctx context.Context, limit int) ([]AlertEvent, error) {
+func (s *Store) AlertEvents(ctx context.Context, limit int) (result []AlertEvent, err error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
@@ -228,8 +231,8 @@ func (s *Store) AlertEvents(ctx context.Context, limit int) ([]AlertEvent, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := make([]AlertEvent, 0)
+	defer closeRows(rows, &err)
+	result = make([]AlertEvent, 0)
 	for rows.Next() {
 		var event AlertEvent
 		if err := rows.Scan(&event.ID, &event.Timestamp, &event.RuleID, &event.RuleName,
@@ -239,6 +242,10 @@ func (s *Store) AlertEvents(ctx context.Context, limit int) ([]AlertEvent, error
 		result = append(result, event)
 	}
 	return result, rows.Err()
+}
+
+func closeRows(rows *sql.Rows, err *error) {
+	*err = errors.Join(*err, rows.Close())
 }
 
 func (s *Store) Prune(ctx context.Context) error {

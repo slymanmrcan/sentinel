@@ -65,29 +65,35 @@
                     </div>
 
                     <div class="metric-grid">
-                        <article class="metric-card" id="cpuCard">
+                        <article class="metric-card metric-card-primary" id="cpuCard">
                             <div class="metric-head"><span>CPU usage</span><em id="cpuState">Normal</em></div>
                             <strong class="metric-value" id="cpuValue">0.0%</strong>
                             <div class="metric-track"><i id="cpuBar"></i></div>
                             <div class="metric-meta"><span>cores <b id="cpuCores">—</b></span><span>temp <b id="cpuTemp">—</b></span></div>
                         </article>
-                        <article class="metric-card" id="memoryCard">
+                        <article class="metric-card metric-card-primary" id="memoryCard">
                             <div class="metric-head"><span>Memory</span><em id="memoryState">Normal</em></div>
                             <strong class="metric-value" id="memoryValue">0.0%</strong>
                             <div class="metric-track"><i id="memoryBar"></i></div>
                             <div class="metric-meta"><span>used <b id="memoryUsed">—</b></span><span>total <b id="memoryTotal">—</b></span></div>
                         </article>
-                        <article class="metric-card" id="diskCard">
+                        <article class="metric-card metric-card-primary" id="diskCard">
                             <div class="metric-head"><span>Disk</span><em id="diskState">Normal</em></div>
                             <strong class="metric-value" id="diskValue">0.0%</strong>
                             <div class="metric-track"><i id="diskBar"></i></div>
                             <div class="metric-meta"><span>used <b id="diskUsed">—</b></span><span>total <b id="diskTotal">—</b></span></div>
                         </article>
+                        <article class="metric-card metric-card-primary" id="swapCard">
+                            <div class="metric-head"><span>Swap</span><em id="swapState">Normal</em></div>
+                            <strong class="metric-value" id="swapValue">0.0%</strong>
+                            <div class="metric-track"><i id="swapBar"></i></div>
+                            <div class="metric-meta"><span>used <b id="swapUsed">—</b></span><span>total <b id="swapTotal">—</b></span></div>
+                        </article>
                         <article class="metric-card metric-card-secondary">
                             <div class="metric-head"><span>Load average</span><em>1 / 5 / 15m</em></div>
                             <strong class="metric-value metric-value-small" id="loadValue">0.00 · 0.00 · 0.00</strong>
                             <div class="metric-track"><i id="loadBar"></i></div>
-                            <div class="metric-meta"><span>swap <b id="swapValue">—</b></span><span id="loadHint">per core —</span></div>
+                            <div class="metric-meta"><span>1m normalized</span><span id="loadHint">per core —</span></div>
                         </article>
                         <article class="metric-card metric-card-secondary">
                             <div class="metric-head"><span>Network I/O</span><em>RX / TX</em></div>
@@ -118,8 +124,9 @@
                                         <button class="series-button active cpu" type="button" data-series="0">CPU</button>
                                         <button class="series-button active memory" type="button" data-series="1">RAM</button>
                                         <button class="series-button disk" type="button" data-series="2">Disk</button>
-                                        <button class="series-button net" type="button" data-series="3">Net in</button>
-                                        <button class="series-button net" type="button" data-series="4">Net out</button>
+                                        <button class="series-button active swap" type="button" data-series="3">Swap</button>
+                                        <button class="series-button net" type="button" data-series="4">Net in</button>
+                                        <button class="series-button net" type="button" data-series="5">Net out</button>
                                     </div>
                                     <div class="range-controls" aria-label="Chart time range">
                                         <button class="range-button active" type="button" data-range="1h">1H</button>

@@ -5,7 +5,7 @@ Kompakt, tek binary olarak dağıtılan host telemetry ve anomaly detection pane
 - Go + DuckDB
 - `cmd/api` ve `internal/*` paket yapısı
 - HttpOnly oturum cookie’si, CSRF koruması ve brute-force kilidi
-- CPU, bellek, disk, load, network ve disk I/O telemetrisi
+- CPU, bellek, swap, disk, load, network ve disk I/O telemetrisi
 - Rolling baseline, z-score anomaly detection ve threshold alert’leri
 - Gömülü, responsive web arayüzü
 
@@ -202,7 +202,7 @@ alınmaz.
 ## Overview
 
 Sentinel is a compact, single-binary host telemetry console backed by DuckDB.
-It collects CPU, memory, disk, load, network, and disk I/O metrics; builds a
+It collects CPU, memory, swap, disk, load, network, and disk I/O metrics; builds a
 rolling statistical baseline; detects z-score anomalies; and evaluates
 threshold alert rules.
 

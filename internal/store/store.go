@@ -245,19 +245,20 @@ func (s *Store) migrate(ctx context.Context) error {
 }
 
 func (s *Store) seedAlertRules(ctx context.Context) error {
-	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM alert_rules`).Scan(&count); err != nil {
-		return fmt.Errorf("count alert rules: %w", err)
-	}
-	if count > 0 {
-		return nil
-	}
 	rules := []AlertRule{
 		{ID: "cpu-high", Name: "CPU saturation", Metric: "cpu", Threshold: 90, Severity: "critical", Enabled: true},
 		{ID: "memory-high", Name: "Memory pressure", Metric: "memory", Threshold: 90, Severity: "critical", Enabled: true},
 		{ID: "disk-high", Name: "Disk capacity", Metric: "disk", Threshold: 85, Severity: "warning", Enabled: true},
+		{ID: "swap-high", Name: "Swap pressure", Metric: "swap", Threshold: 50, Severity: "warning", Enabled: true},
 	}
 	for _, rule := range rules {
+		var count int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM alert_rules WHERE id = ?`, rule.ID).Scan(&count); err != nil {
+			return fmt.Errorf("count alert rule %s: %w", rule.ID, err)
+		}
+		if count > 0 {
+			continue
+		}
 		if _, err := s.db.ExecContext(ctx,
 			`INSERT INTO alert_rules (id, name, metric, threshold, severity, enabled) VALUES (?, ?, ?, ?, ?, ?)`,
 			rule.ID, rule.Name, rule.Metric, rule.Threshold, rule.Severity, rule.Enabled,
