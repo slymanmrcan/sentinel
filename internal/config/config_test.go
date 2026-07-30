@@ -8,6 +8,7 @@ import (
 func TestLoadDefaultsAndLegacyAuthFallback(t *testing.T) {
 	t.Setenv("PORT", "")
 	t.Setenv("DB_PATH", "")
+	t.Setenv("ADMIN_LOGIN", "")
 	t.Setenv("ADMIN_EMAIL", "")
 	t.Setenv("ADMIN_PASSWORD", "")
 	t.Setenv("AUTH_USER", "legacy-admin")

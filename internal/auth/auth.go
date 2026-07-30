@@ -62,11 +62,14 @@ func (s *Service) bootstrapAdmin(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("count users: %w", err)
 	}
-	if count > 0 {
+	if count == 0 && !validPasswordLength(s.cfg.AdminPassword) {
+		return errors.New("first startup requires ADMIN_PASSWORD (or legacy AUTH_PASSWORD) with at least 8 characters and at most 72 bytes")
+	}
+	if count > 0 && s.cfg.AdminPassword == "" {
 		return nil
 	}
 	if !validPasswordLength(s.cfg.AdminPassword) {
-		return errors.New("first startup requires ADMIN_PASSWORD (or legacy AUTH_PASSWORD) with at least 8 characters and at most 72 bytes")
+		return errors.New("configured ADMIN_PASSWORD (or legacy AUTH_PASSWORD) must have at least 8 characters and at most 72 bytes")
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(s.cfg.AdminPassword), bcrypt.DefaultCost)
@@ -82,10 +85,47 @@ func (s *Service) bootstrapAdmin(ctx context.Context) error {
 		CreatedAt:    time.Now(),
 	}
 	if user.Login == "" {
-		return errors.New("ADMIN_EMAIL or AUTH_USER is required")
+		return errors.New("ADMIN_LOGIN, ADMIN_EMAIL, or AUTH_USER is required")
 	}
-	if err := s.store.CreateUser(ctx, user); err != nil {
-		return fmt.Errorf("create bootstrap admin: %w", err)
+	if count == 0 {
+		if err := s.store.CreateUser(ctx, user); err != nil {
+			return fmt.Errorf("create bootstrap admin: %w", err)
+		}
+		return nil
+	}
+
+	existing, err := s.store.UserByLogin(ctx, user.Login)
+	if store.IsNotFound(err) {
+		existing, err = s.store.FirstAdmin(ctx)
+	}
+	if err != nil {
+		return fmt.Errorf("load bootstrap admin: %w", err)
+	}
+
+	passwordChanged := bcrypt.CompareHashAndPassword(
+		[]byte(existing.PasswordHash),
+		[]byte(s.cfg.AdminPassword),
+	) != nil
+	profileChanged := existing.Login != user.Login || existing.Name != user.Name
+	if !passwordChanged && !profileChanged {
+		return nil
+	}
+	if !passwordChanged {
+		user.PasswordHash = existing.PasswordHash
+	}
+	if err := s.store.UpdateBootstrapAdmin(
+		ctx,
+		existing.ID,
+		user.Login,
+		user.Name,
+		user.PasswordHash,
+	); err != nil {
+		return fmt.Errorf("synchronize bootstrap admin: %w", err)
+	}
+	if passwordChanged {
+		if err := s.store.DeleteUserSessions(ctx, existing.ID); err != nil {
+			return fmt.Errorf("revoke sessions after bootstrap password sync: %w", err)
+		}
 	}
 	return nil
 }

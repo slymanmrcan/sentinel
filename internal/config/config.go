@@ -49,9 +49,9 @@ func Load() (Config, error) {
 		}
 	}
 
-	adminLogin := firstNonEmpty("ADMIN_EMAIL", "AUTH_USER")
+	adminLogin := firstNonEmpty("ADMIN_LOGIN", "ADMIN_EMAIL", "AUTH_USER")
 	if adminLogin == "" {
-		adminLogin = "admin@sentinel.local"
+		adminLogin = "admin"
 	}
 
 	return Config{

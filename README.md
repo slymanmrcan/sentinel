@@ -57,13 +57,14 @@ make run
 
 Panel: `http://localhost:8000`
 
-İlk açılışta `users` tablosu boşsa `ADMIN_EMAIL`, `ADMIN_NAME` ve
-`ADMIN_PASSWORD` ile admin oluşturulur. `ADMIN_PASSWORD` sonraki başlangıçlarda
-mevcut hesabın parolasını otomatik değiştirmez; parola paneldeki hesap
-menüsünden değiştirilir.
+İlk açılışta `ADMIN_LOGIN`, `ADMIN_NAME` ve `ADMIN_PASSWORD` ile admin
+oluşturulur. Sonraki başlangıçlarda bu değerler mevcut admin hesapla
+senkronlanır; böylece `.env` üzerinden kullanıcı adı/parola kurtarma ve reset
+yapılabilir. `ADMIN_PASSWORD` ortamda kalırsa panelden yapılan parola değişikliği
+sonraki restartta tekrar `.env` değerine döner.
 
-> Eski kurulumların geçişi için `AUTH_USER` ve `AUTH_PASSWORD`, yeni admin
-> değişkenleri verilmediğinde fallback olarak okunur.
+> Eski kurulumların geçişi için `ADMIN_EMAIL`, `AUTH_USER` ve `AUTH_PASSWORD`,
+> yeni admin değişkenleri verilmediğinde fallback olarak okunur.
 
 ## Auth modeli
 
@@ -87,9 +88,9 @@ reverse proxy arkasında tutun.
 |---|---:|---|
 | `PORT` | `8000` | HTTP portu |
 | `DB_PATH` | `metrics.db` | DuckDB dosyası |
-| `ADMIN_EMAIL` | `admin@sentinel.local` | İlk admin login değeri |
-| `ADMIN_NAME` | `Sentinel Admin` | İlk admin görünen adı |
-| `ADMIN_PASSWORD` | yok | İlk açılışta zorunlu, min. 8 karakter |
+| `ADMIN_LOGIN` | `admin` | Admin kullanıcı adı |
+| `ADMIN_NAME` | `Sentinel Admin` | Admin görünen adı |
+| `ADMIN_PASSWORD` | yok | Admin parolası/reset değeri, min. 8 karakter |
 | `AUTH_COOKIE_SECURE` | `false` | HTTPS ortamında `true` |
 | `AUTH_SESSION_TTL` | `12h` | `15m`–`720h` arası oturum süresi |
 | `AUTH_ALLOWED_ORIGINS` | boş | Virgülle ayrılmış public origin listesi |
@@ -139,7 +140,7 @@ Cookie ve CSRF ile örnek:
 ```bash
 curl -c /tmp/sentinel.cookies \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@sentinel.local","password":"YOUR_LONG_PASSWORD"}' \
+  -d '{"login":"admin","password":"YOUR_LONG_PASSWORD"}' \
   http://localhost:8000/api/auth/login
 ```
 
@@ -226,12 +227,14 @@ make run
 
 Open `http://localhost:8000`.
 
-When the users table is empty, Sentinel creates the first administrator from
-`ADMIN_EMAIL`, `ADMIN_NAME`, and `ADMIN_PASSWORD`. The bootstrap password does
-not rotate an existing account on restart. Change it from the account menu.
+Sentinel creates and synchronizes the administrator from `ADMIN_LOGIN`,
+`ADMIN_NAME`, and `ADMIN_PASSWORD`. This makes the environment values the
+recovery/reset mechanism for an existing database. If `ADMIN_PASSWORD` remains
+configured, a password changed from the account menu will return to the
+environment value after restart.
 
-Legacy `AUTH_USER` and `AUTH_PASSWORD` values remain accepted as bootstrap
-fallbacks when the new variables are absent.
+Legacy `ADMIN_EMAIL`, `AUTH_USER`, and `AUTH_PASSWORD` values remain accepted
+as fallbacks when the new variables are absent.
 
 ## Authentication and security
 

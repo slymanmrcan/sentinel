@@ -31,7 +31,7 @@ async function signIn(event) {
             },
             cache: 'no-store',
             body: JSON.stringify({
-                email: document.getElementById('login').value,
+                login: document.getElementById('login').value,
                 password: document.getElementById('password').value
             })
         });

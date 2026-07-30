@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -97,6 +100,45 @@ func TestPasswordLength(t *testing.T) {
 		if got := validPasswordLength(test.password); got != test.want {
 			t.Fatalf("validPasswordLength(%q) = %t, want %t", test.password, got, test.want)
 		}
+	}
+}
+
+func TestBootstrapCredentialsSynchronizeExistingAdmin(t *testing.T) {
+	ctx := context.Background()
+	dataStore, err := store.Open(filepath.Join(t.TempDir(), "auth.db"))
+	if err != nil {
+		t.Fatalf("store.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	firstConfig := config.Config{
+		AdminLogin:    "admin@sentinel.local",
+		AdminName:     "Sentinel Admin",
+		AdminPassword: "first-password",
+		SessionTTL:    time.Hour,
+	}
+	if _, err := New(ctx, dataStore, firstConfig); err != nil {
+		t.Fatalf("first New() error = %v", err)
+	}
+
+	updatedConfig := firstConfig
+	updatedConfig.AdminLogin = "admin"
+	updatedConfig.AdminPassword = "second-password"
+	service, err := New(ctx, dataStore, updatedConfig)
+	if err != nil {
+		t.Fatalf("second New() error = %v", err)
+	}
+	if _, err := dataStore.UserByLogin(ctx, "admin@sentinel.local"); !store.IsNotFound(err) {
+		t.Fatalf("old login lookup error = %v, want not found", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "http://sentinel.local/api/auth/login", nil)
+	request.RemoteAddr = "127.0.0.1:1234"
+	if _, _, err := service.Login(ctx, request, "admin", "second-password"); err != nil {
+		t.Fatalf("Login() with synchronized credentials error = %v", err)
+	}
+	if _, _, err := service.Login(ctx, request, "admin", "first-password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("Login() with old password error = %v, want ErrInvalidCredentials", err)
 	}
 }
 

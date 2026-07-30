@@ -40,6 +40,27 @@ func (s *Store) UserByID(ctx context.Context, id string) (User, error) {
 	return user, err
 }
 
+func (s *Store) FirstAdmin(ctx context.Context) (User, error) {
+	var user User
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, email, password_hash, name, role, created_at
+		FROM users
+		WHERE role = 'admin'
+		ORDER BY created_at
+		LIMIT 1
+	`).Scan(&user.ID, &user.Login, &user.PasswordHash, &user.Name, &user.Role, &user.CreatedAt)
+	return user, err
+}
+
+func (s *Store) UpdateBootstrapAdmin(ctx context.Context, userID, login, name, passwordHash string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE users
+		SET email = ?, name = ?, password_hash = ?
+		WHERE id = ?
+	`, login, name, passwordHash, userID)
+	return err
+}
+
 func (s *Store) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
 	return err

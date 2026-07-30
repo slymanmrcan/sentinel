@@ -145,7 +145,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type loginRequest struct {
-	Login    string `json:"email"`
+	Login    string `json:"login"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
@@ -161,7 +162,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	result, rawToken, err := s.auth.Login(r.Context(), r, payload.Login, payload.Password)
+	login := payload.Login
+	if login == "" {
+		login = payload.Email
+	}
+	result, rawToken, err := s.auth.Login(r.Context(), r, login, payload.Password)
 	if err != nil {
 		var lockout *auth.LockoutError
 		switch {
