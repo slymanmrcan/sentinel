@@ -29,6 +29,7 @@ services:
       - ADMIN_NAME
       - AUTH_COOKIE_SECURE
       - AUTH_SESSION_TTL
+      - AUTH_ALLOWED_ORIGINS
       - TRUST_PROXY_HEADERS
     volumes:
       - ./data:/data

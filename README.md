@@ -47,7 +47,7 @@ Gereksinimler:
 
 - Go `1.25.12`
 - CGO destekli toolchain
-- İlk admin için en az 12 karakterlik parola
+- İlk admin için en az 8 karakterlik parola
 
 ```bash
 cp .env.example .env
@@ -73,6 +73,7 @@ menüsünden değiştirilir.
 - Yazma istekleri session’a bağlı `X-CSRF-Token` ister.
 - Beş hatalı girişten sonra login + IP çifti 15 dakika kilitlenir.
 - Parola bcrypt ile hashlenir.
+- Parola uzunluğu 8 karakter ile bcrypt sınırı olan 72 byte arasındadır.
 - Parola değişimi kullanıcının tüm aktif oturumlarını kapatır.
 - `/healthz` public; dashboard ve `/api/*` auth korumalıdır.
 
@@ -88,9 +89,10 @@ reverse proxy arkasında tutun.
 | `DB_PATH` | `metrics.db` | DuckDB dosyası |
 | `ADMIN_EMAIL` | `admin@sentinel.local` | İlk admin login değeri |
 | `ADMIN_NAME` | `Sentinel Admin` | İlk admin görünen adı |
-| `ADMIN_PASSWORD` | yok | İlk açılışta zorunlu, min. 12 karakter |
+| `ADMIN_PASSWORD` | yok | İlk açılışta zorunlu, min. 8 karakter |
 | `AUTH_COOKIE_SECURE` | `false` | HTTPS ortamında `true` |
 | `AUTH_SESSION_TTL` | `12h` | `15m`–`720h` arası oturum süresi |
+| `AUTH_ALLOWED_ORIGINS` | boş | Virgülle ayrılmış public origin listesi |
 | `TRUST_PROXY_HEADERS` | `false` | Yalnız güvenilir proxy arkasında `true` |
 | `HOST_ROOT` | boş | Host root mount yolu |
 | `HOST_SYS` | boş | Host sysfs mount yolu |
@@ -98,6 +100,20 @@ reverse proxy arkasında tutun.
 Uygulama başlangıçta çalışma dizinindeki `.env` dosyasını yükler; gerçek ortam
 değişkenleri `.env` değerlerinden önceliklidir. `.env` Git tarafından yok
 sayılır.
+
+HTTPS reverse proxy `Host` header’ını koruyorsa ayrıca bir ayar gerekmez. Proxy
+upstream’e `Host: sentinel:8000` gibi farklı bir değer gönderiyorsa public adresi
+açıkça tanımlayın:
+
+```env
+AUTH_COOKIE_SECURE=true
+AUTH_ALLOWED_ORIGINS=https://sentinel.example.com
+```
+
+`TRUST_PROXY_HEADERS=true` alternatifi yalnız Sentinel’e doğrudan internetten
+erişilemiyor ve tüm istekler güvenilir proxy’den geliyorsa kullanılmalıdır.
+`AUTH_COOKIE_SECURE` yalnız cookie güvenliğini yönetir; origin doğrulamasının
+şemasını değiştirmez.
 
 ## API
 
@@ -204,7 +220,7 @@ The Go code is split into:
 
 ```bash
 cp .env.example .env
-# Replace ADMIN_PASSWORD with a value of at least 12 characters.
+# Replace ADMIN_PASSWORD with a value of at least 8 characters.
 make run
 ```
 
@@ -229,6 +245,14 @@ fallbacks when the new variables are absent.
 
 Set `AUTH_COOKIE_SECURE=true` only when the browser reaches Sentinel over
 HTTPS. Keep network deployments behind an HTTPS reverse proxy.
+
+When the proxy rewrites the upstream Host header, set the public browser origin
+explicitly:
+
+```env
+AUTH_COOKIE_SECURE=true
+AUTH_ALLOWED_ORIGINS=https://sentinel.example.com
+```
 
 ## Docker
 

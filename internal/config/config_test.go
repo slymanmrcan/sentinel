@@ -14,6 +14,7 @@ func TestLoadDefaultsAndLegacyAuthFallback(t *testing.T) {
 	t.Setenv("AUTH_PASSWORD", "legacy-password")
 	t.Setenv("AUTH_COOKIE_SECURE", "true")
 	t.Setenv("AUTH_SESSION_TTL", "2h")
+	t.Setenv("AUTH_ALLOWED_ORIGINS", "https://monitor.example, http://localhost:8000/")
 
 	cfg, err := Load()
 	if err != nil {
@@ -28,11 +29,23 @@ func TestLoadDefaultsAndLegacyAuthFallback(t *testing.T) {
 	if !cfg.CookieSecure || cfg.SessionTTL != 2*time.Hour {
 		t.Fatalf("auth settings were not loaded: %#v", cfg)
 	}
+	if len(cfg.AllowedOrigins) != 2 ||
+		cfg.AllowedOrigins[0] != "https://monitor.example" ||
+		cfg.AllowedOrigins[1] != "http://localhost:8000" {
+		t.Fatalf("allowed origins were not normalized: %#v", cfg.AllowedOrigins)
+	}
 }
 
 func TestLoadRejectsUnsafeSessionTTL(t *testing.T) {
 	t.Setenv("AUTH_SESSION_TTL", "5m")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want invalid duration error")
+	}
+}
+
+func TestLoadRejectsAllowedOriginWithPath(t *testing.T) {
+	t.Setenv("AUTH_ALLOWED_ORIGINS", "https://monitor.example/admin")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want invalid origin error")
 	}
 }

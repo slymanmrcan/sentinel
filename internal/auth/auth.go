@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/slymanmrcan/sentinel/internal/config"
 	"github.com/slymanmrcan/sentinel/internal/store"
@@ -20,6 +22,8 @@ import (
 
 const (
 	CookieName       = "sentinel_session"
+	minPasswordRunes = 8
+	maxPasswordBytes = 72
 	maxLoginFailures = 5
 	loginLockout     = 15 * time.Minute
 )
@@ -61,8 +65,8 @@ func (s *Service) bootstrapAdmin(ctx context.Context) error {
 	if count > 0 {
 		return nil
 	}
-	if len(s.cfg.AdminPassword) < 12 {
-		return errors.New("first startup requires ADMIN_PASSWORD (or legacy AUTH_PASSWORD) with at least 12 characters")
+	if !validPasswordLength(s.cfg.AdminPassword) {
+		return errors.New("first startup requires ADMIN_PASSWORD (or legacy AUTH_PASSWORD) with at least 8 characters and at most 72 bytes")
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(s.cfg.AdminPassword), bcrypt.DefaultCost)
@@ -153,7 +157,7 @@ func (s *Service) Logout(ctx context.Context, tokenHash string) error {
 }
 
 func (s *Service) ChangePassword(ctx context.Context, principal Principal, currentPassword, newPassword string) error {
-	if len(newPassword) < 12 {
+	if !validPasswordLength(newPassword) {
 		return ErrWeakPassword
 	}
 	user, err := s.store.UserByID(ctx, principal.User.ID)
@@ -210,8 +214,22 @@ func (s *Service) ClientOriginAllowed(r *http.Request) bool {
 	if origin == "" {
 		return true
 	}
+	parsedOrigin, err := url.Parse(origin)
+	if err != nil || (parsedOrigin.Scheme != "http" && parsedOrigin.Scheme != "https") ||
+		parsedOrigin.Host == "" || parsedOrigin.User != nil ||
+		(parsedOrigin.Path != "" && parsedOrigin.Path != "/") ||
+		parsedOrigin.RawQuery != "" || parsedOrigin.Fragment != "" {
+		return false
+	}
+	normalizedOrigin := strings.ToLower(parsedOrigin.Scheme + "://" + parsedOrigin.Host)
+	for _, allowed := range s.cfg.AllowedOrigins {
+		if normalizedOrigin == allowed {
+			return true
+		}
+	}
+
 	expectedScheme := "http"
-	if s.cfg.CookieSecure || r.TLS != nil {
+	if r.TLS != nil {
 		expectedScheme = "https"
 	}
 	expectedHost := r.Host
@@ -222,8 +240,16 @@ func (s *Service) ClientOriginAllowed(r *http.Request) bool {
 		if forwardedProto := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]); forwardedProto != "" {
 			expectedScheme = forwardedProto
 		}
+		return strings.EqualFold(normalizedOrigin, expectedScheme+"://"+expectedHost)
 	}
-	return strings.EqualFold(origin, expectedScheme+"://"+expectedHost)
+
+	if !strings.EqualFold(parsedOrigin.Host, expectedHost) {
+		return false
+	}
+	// A TLS-terminating reverse proxy may preserve Host while the upstream
+	// request itself is plain HTTP. In that case host equality still blocks a
+	// cross-site browser request without trusting spoofable proxy headers.
+	return r.TLS == nil || strings.EqualFold(parsedOrigin.Scheme, expectedScheme)
 }
 
 func (s *Service) clientIP(r *http.Request) string {
@@ -248,6 +274,10 @@ func hashToken(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func validPasswordLength(password string) bool {
+	return utf8.RuneCountInString(password) >= minPasswordRunes && len(password) <= maxPasswordBytes
+}
+
 func randomHex(bytes int) string {
 	buffer := make([]byte, bytes)
 	if _, err := rand.Read(buffer); err != nil {
@@ -259,7 +289,7 @@ func randomHex(bytes int) string {
 var (
 	ErrUnauthenticated    = errors.New("authentication required")
 	ErrInvalidCredentials = errors.New("invalid login or password")
-	ErrWeakPassword       = errors.New("new password must be at least 12 characters")
+	ErrWeakPassword       = errors.New("new password must be at least 8 characters and at most 72 bytes")
 )
 
 type LockoutError struct {

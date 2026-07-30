@@ -61,6 +61,45 @@ func TestOriginHeadersAreIgnoredUnlessProxyTrustIsEnabled(t *testing.T) {
 	}
 }
 
+func TestOriginAllowsTLSTerminationWhenPublicHostIsPreserved(t *testing.T) {
+	request := httptest.NewRequest("POST", "http://monitor.example/api/auth/login", nil)
+	request.Host = "monitor.example"
+	request.Header.Set("Origin", "https://monitor.example")
+
+	service := &Service{cfg: config.Config{CookieSecure: false, TrustProxyHeaders: false}}
+	if !service.ClientOriginAllowed(request) {
+		t.Fatal("ClientOriginAllowed coupled origin validation to the cookie secure setting")
+	}
+}
+
+func TestExplicitAllowedOriginSupportsRewrittenProxyHost(t *testing.T) {
+	request := httptest.NewRequest("POST", "http://sentinel:8000/api/auth/login", nil)
+	request.Host = "sentinel:8000"
+	request.Header.Set("Origin", "https://monitor.example")
+
+	service := &Service{cfg: config.Config{AllowedOrigins: []string{"https://monitor.example"}}}
+	if !service.ClientOriginAllowed(request) {
+		t.Fatal("ClientOriginAllowed rejected an explicitly allowed public origin")
+	}
+}
+
+func TestPasswordLength(t *testing.T) {
+	tests := []struct {
+		password string
+		want     bool
+	}{
+		{password: "1234567", want: false},
+		{password: "12345678", want: true},
+		{password: "güçlü-şifre", want: true},
+		{password: string(make([]byte, 73)), want: false},
+	}
+	for _, test := range tests {
+		if got := validPasswordLength(test.password); got != test.want {
+			t.Fatalf("validPasswordLength(%q) = %t, want %t", test.password, got, test.want)
+		}
+	}
+}
+
 func TestSessionCookieSecurityAttributes(t *testing.T) {
 	service := &Service{cfg: config.Config{CookieSecure: true, SessionTTL: time.Hour}}
 	recorder := httptest.NewRecorder()

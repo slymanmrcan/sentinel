@@ -249,7 +249,7 @@
             </div>
             <p>Changing your password signs out every active Sentinel session.</p>
             <label>Current password<input id="currentPassword" type="password" autocomplete="current-password" required></label>
-            <label>New password<input id="newPassword" type="password" autocomplete="new-password" minlength="12" required></label>
+            <label>New password<input id="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
             <div class="form-message" id="passwordMessage" role="status"></div>
             <div class="dialog-actions"><button value="cancel">Cancel</button><button class="primary-button" id="savePasswordButton" type="submit">Update password</button></div>
         </form>

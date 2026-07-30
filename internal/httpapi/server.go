@@ -92,6 +92,8 @@ func (s *Server) requireAuth(next authedHandler) http.HandlerFunc {
 		}
 		if isWrite(r.Method) {
 			if !s.auth.ClientOriginAllowed(r) {
+				log.Printf("cross-origin request rejected: origin=%q host=%q trust_proxy_headers=%t",
+					r.Header.Get("Origin"), r.Host, s.cfg.TrustProxyHeaders)
 				writeError(w, http.StatusForbidden, "cross-origin request rejected")
 				return
 			}
@@ -149,6 +151,8 @@ type loginRequest struct {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !s.auth.ClientOriginAllowed(r) {
+		log.Printf("cross-origin login rejected: origin=%q host=%q trust_proxy_headers=%t",
+			r.Header.Get("Origin"), r.Host, s.cfg.TrustProxyHeaders)
 		writeError(w, http.StatusForbidden, "cross-origin request rejected")
 		return
 	}

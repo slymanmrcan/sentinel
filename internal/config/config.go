@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ type Config struct {
 	CookieSecure      bool
 	SessionTTL        time.Duration
 	TrustProxyHeaders bool
+	AllowedOrigins    []string
 	HostRoot          string
 	HostSys           string
 }
@@ -27,6 +29,10 @@ func Load() (Config, error) {
 	_ = godotenv.Load()
 
 	cookieSecure, err := envBool("AUTH_COOKIE_SECURE", false)
+	if err != nil {
+		return Config{}, err
+	}
+	allowedOrigins, err := parseOrigins(os.Getenv("AUTH_ALLOWED_ORIGINS"))
 	if err != nil {
 		return Config{}, err
 	}
@@ -57,6 +63,7 @@ func Load() (Config, error) {
 		CookieSecure:      cookieSecure,
 		SessionTTL:        sessionTTL,
 		TrustProxyHeaders: trustProxyHeaders,
+		AllowedOrigins:    allowedOrigins,
 		HostRoot:          strings.TrimSpace(os.Getenv("HOST_ROOT")),
 		HostSys:           strings.TrimSpace(os.Getenv("HOST_SYS")),
 	}, nil
@@ -88,4 +95,23 @@ func envBool(key string, fallback bool) (bool, error) {
 		return false, fmt.Errorf("%s must be true or false", key)
 	}
 	return value, nil
+}
+
+func parseOrigins(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	origins := make([]string, 0)
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		parsed, err := url.Parse(item)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+			parsed.Host == "" || parsed.User != nil ||
+			(parsed.Path != "" && parsed.Path != "/") ||
+			parsed.RawQuery != "" || parsed.Fragment != "" {
+			return nil, fmt.Errorf("AUTH_ALLOWED_ORIGINS must contain comma-separated http(s) origins without paths")
+		}
+		origins = append(origins, strings.ToLower(parsed.Scheme+"://"+parsed.Host))
+	}
+	return origins, nil
 }
