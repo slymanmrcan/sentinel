@@ -1,417 +1,258 @@
-<div align="center">
+# Sentinel
 
-# 🛰️ Sentinel
+Kompakt, tek binary olarak dağıtılan host telemetry ve anomaly detection paneli.
 
-### A tiny self-hosted monitor with a surprisingly sharp view.
+- Go + DuckDB
+- `cmd/api` ve `internal/*` paket yapısı
+- HttpOnly oturum cookie’si, CSRF koruması ve brute-force kilidi
+- CPU, bellek, disk, load, network ve disk I/O telemetrisi
+- Rolling baseline, z-score anomaly detection ve threshold alert’leri
+- Gömülü, responsive web arayüzü
 
-CPU, memory, disk, load, processes, listening ports and logs — collected by one Go binary, persisted in DuckDB and presented through an embedded responsive dashboard.
+<details open>
+<summary><strong>Türkçe</strong></summary>
 
-![Go 1.25.12](https://img.shields.io/badge/Go-1.25.12-00ADD8?style=flat-square&logo=go&logoColor=white)
-![DuckDB](https://img.shields.io/badge/DuckDB-embedded-FFF000?style=flat-square&logo=duckdb&logoColor=111111)
-![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)
-![Runtime CDN](https://img.shields.io/badge/runtime_CDN-none-39D98A?style=flat-square)
-![Access](https://img.shields.io/badge/access-local_first-8B8CF8?style=flat-square)
+## Mimari
 
-**Single binary · Embedded UI · Embedded database · No frontend build step**
+```text
+sentinel/
+├── cmd/api/                 # Uygulama entrypoint'i
+├── internal/
+│   ├── app/                 # Başlatma ve graceful shutdown
+│   ├── auth/                # Oturum, parola, CSRF ve login lockout
+│   ├── config/              # Ortam değişkeni kontratı
+│   ├── httpapi/             # Router, middleware ve HTTP handler'ları
+│   ├── monitor/             # Host collector, anomaly ve alert engine
+│   └── store/               # DuckDB migration ve sorguları
+├── web/                     # Binary içine gömülen UI dosyaları
+├── Dockerfile
+└── docker-compose.yml
+```
 
-</div>
-
----
+İstek akışı:
 
 ```mermaid
 flowchart LR
-    H["Host system"] --> C["Sentinel collector"]
-    C --> M["Live metric cache"]
-    C --> D[("DuckDB")]
-    M --> A["Protected API"]
-    D --> A
-    A --> U["Embedded dashboard"]
-    S["External services"] -->|"POST logs"| A
+    Browser["Browser UI"] --> API["cmd/api + internal/httpapi"]
+    API --> Auth["internal/auth"]
+    API --> Monitor["internal/monitor"]
+    Auth --> DB[("DuckDB")]
+    Monitor --> DB
+    Monitor --> Host["/proc · /sys · host root"]
 ```
 
-> [!IMPORTANT]
-> Sentinel is designed for local or internal-network monitoring. Basic Auth remains optional for trusted local use. If the service is reachable over a network, put it behind an HTTPS reverse proxy.
+## İlk çalıştırma
 
-<details open>
-<summary><strong>🇹🇷 Türkçe</strong> — Kurulum, güvenlik ve kullanım</summary>
+Gereksinimler:
 
-## Sentinel nedir?
-
-Sentinel, sunucu durumunu gereksiz bir platform kurmadan izlemek için hazırlanmış küçük bir sistem monitörüdür.
-
-- CPU, RAM, swap, disk, load average ve uptime takibi
-- En çok kaynak kullanan process listesi
-- Dinlenen TCP portları
-- DuckDB tabanlı metrik ve log geçmişi
-- 1 saatlik ve 24 saatlik performans grafikleri
-- Mobil uyumlu, kart tabanlı karanlık dashboard
-- Dashboard ve API için opsiyonel Basic Auth
-- Harici servislere açık log alma endpoint'i
-- Tek binary içinde UI ve sabitlenmiş Chart.js
-- Graceful shutdown ve otomatik veri temizliği
-
-Metrikler **30 gün**, loglar **7 gün** saklanır.
-
-## Hızlı başlangıç
-
-### Gereksinimler
-
-- Go `1.25.12+`
-- Opsiyonel olarak Docker ve Docker Compose
-
-### Lokal çalıştırma
+- Go `1.25.12`
+- CGO destekli toolchain
+- İlk admin için en az 12 karakterlik parola
 
 ```bash
-# Kalite kontrolleri
-make check
-
-# Derle
-make build
-
-# localhost:8000 üzerinde çalıştır
+cp .env.example .env
+# .env içindeki ADMIN_PASSWORD değerini değiştir
 make run
 ```
 
-Dashboard:
+Panel: `http://localhost:8000`
 
-```text
-http://localhost:8000
-```
+İlk açılışta `users` tablosu boşsa `ADMIN_EMAIL`, `ADMIN_NAME` ve
+`ADMIN_PASSWORD` ile admin oluşturulur. `ADMIN_PASSWORD` sonraki başlangıçlarda
+mevcut hesabın parolasını otomatik değiştirmez; parola paneldeki hesap
+menüsünden değiştirilir.
 
-Lokal çalışmada auth açmak istersen:
+> Eski kurulumların geçişi için `AUTH_USER` ve `AUTH_PASSWORD`, yeni admin
+> değişkenleri verilmediğinde fallback olarak okunur.
 
-```bash
-AUTH_USER=admin AUTH_PASSWORD='guclu-bir-parola' make run
-```
+## Auth modeli
 
-> [!NOTE]
-> Uygulama `.env` dosyasını kendisi yüklemez. Docker Compose `.env` dosyasını otomatik okur; doğrudan `make run` kullanırken değişkenleri shell üzerinden vermelisin.
+- Tarayıcı yalnızca rastgele, opaque bir `sentinel_session` cookie’si alır.
+- Cookie `HttpOnly` ve `SameSite=Strict` olarak ayarlanır.
+- Sunucuda session token’ın kendisi değil SHA-256 özeti tutulur.
+- Yazma istekleri session’a bağlı `X-CSRF-Token` ister.
+- Beş hatalı girişten sonra login + IP çifti 15 dakika kilitlenir.
+- Parola bcrypt ile hashlenir.
+- Parola değişimi kullanıcının tüm aktif oturumlarını kapatır.
+- `/healthz` public; dashboard ve `/api/*` auth korumalıdır.
 
-## Docker ile çalıştırma
+`AUTH_COOKIE_SECURE=true` yalnızca servis gerçekten HTTPS üzerinden
+yayınlanıyorsa kullanılmalıdır. Sentinel’i ağ üzerinden HTTP ile açmayın; HTTPS
+reverse proxy arkasında tutun.
 
-Compose yapılandırması Sentinel'i dışarı port yayınlamadan `infra_net` ağına bağlar.
-
-```bash
-docker network create infra_net
-cp .env.example .env
-
-# .env içindeki AUTH_PASSWORD değerini değiştir
-make docker-up
-```
-
-Alternatif:
-
-```bash
-docker compose up -d --build
-```
-
-> [!TIP]
-> `docker-compose.yml` yalnızca `expose: 8000` kullanır. Yani servis host üzerinde doğrudan yayınlanmaz; aynı `infra_net` ağına bağlı Nginx, Caddy, Traefik veya başka bir reverse proxy üzerinden erişilmesi beklenir.
-
-### Host izleme mountları
-
-Sentinel gerçek host verilerini okuyabilmek için aşağıdaki yolları read-only bağlar:
-
-| Host yolu | Container yolu | Yetki | Amaç |
-|---|---|---:|---|
-| `/proc` | `/host/proc` | `ro` | Process ve sistem metrikleri |
-| `/sys` | `/host/sys` | `ro` | Donanım ve sıcaklık bilgileri |
-| `/` | `/host/root` | `ro` | Host disk kullanımı ve OS bilgisi |
-| `./data` | `/data` | `rw` | DuckDB kalıcılığı |
-
-Container tüm Linux capability'lerini düşürür, `no-new-privileges` kullanır ve kendi root filesystem'ini read-only çalıştırır.
-
-> macOS üzerinde Docker Desktop bir Linux VM içinde çalışır. Bu nedenle Docker kurulumu fiziksel macOS hostu yerine VM metriklerini gösterebilir.
-
-## Güvenlik modeli
-
-Sentinel'in güvenlik sınırı **local/internal-first** yaklaşımıdır:
-
-- `AUTH_USER` ve `AUTH_PASSWORD` birlikte verilirse dashboard ve `/api/*` korunur.
-- Auth değerlerinden biri boşsa Basic Auth devre dışı kalır.
-- `/healthz` container probe'ları için auth dışında kalır.
-- Basic Auth ağ üzerinden kullanılacaksa önünde mutlaka HTTPS bulunmalıdır.
-- API cevaplarında CSP, clickjacking, MIME sniffing ve referrer korumaları bulunur.
-- Log payload'ları seviye, kaynak, mesaj uzunluğu ve body boyutu açısından doğrulanır.
-- UI, API verilerini çalıştırılabilir HTML olarak değil metin olarak render eder.
-- HTTP header/body/write/idle timeoutları aktiftir.
-- Chart.js ve fontlar için çalışma anında harici CDN çağrısı yapılmaz.
-
-## Yapılandırma
+## Ortam değişkenleri
 
 | Değişken | Varsayılan | Açıklama |
-|---|---|---|
-| `PORT` | `8000` | HTTP dinleme portu |
-| `DB_PATH` | `metrics.db` | DuckDB dosya yolu |
-| `AUTH_USER` | boş | Opsiyonel Basic Auth kullanıcı adı |
-| `AUTH_PASSWORD` | boş | Opsiyonel Basic Auth parolası |
-| `HOST_PROC` | boş | Host `/proc` mount yolu |
-| `HOST_SYS` | boş | Host `/sys` mount yolu |
-| `HOST_ROOT` | boş | Host root filesystem mount yolu |
+|---|---:|---|
+| `PORT` | `8000` | HTTP portu |
+| `DB_PATH` | `metrics.db` | DuckDB dosyası |
+| `ADMIN_EMAIL` | `admin@sentinel.local` | İlk admin login değeri |
+| `ADMIN_NAME` | `Sentinel Admin` | İlk admin görünen adı |
+| `ADMIN_PASSWORD` | yok | İlk açılışta zorunlu, min. 12 karakter |
+| `AUTH_COOKIE_SECURE` | `false` | HTTPS ortamında `true` |
+| `AUTH_SESSION_TTL` | `12h` | `15m`–`720h` arası oturum süresi |
+| `TRUST_PROXY_HEADERS` | `false` | Yalnız güvenilir proxy arkasında `true` |
+| `HOST_ROOT` | boş | Host root mount yolu |
+| `HOST_SYS` | boş | Host sysfs mount yolu |
+
+Uygulama başlangıçta çalışma dizinindeki `.env` dosyasını yükler; gerçek ortam
+değişkenleri `.env` değerlerinden önceliklidir. `.env` Git tarafından yok
+sayılır.
 
 ## API
 
-| Method | Endpoint | Auth | Açıklama |
-|---:|---|:---:|---|
-| `GET` | `/healthz` | Hayır | Uygulama ve DuckDB liveness kontrolü |
-| `GET` | `/api/metrics/realtime` | Evet* | Güncel sistem metrikleri |
-| `GET` | `/api/metrics/history?range=1h` | Evet* | Son 1 saatin ham metrikleri |
-| `GET` | `/api/metrics/history?range=24h` | Evet* | 5 dakikalık gruplarla son 24 saat |
-| `GET` | `/api/system/details` | Evet* | Process, port, kernel ve reboot bilgisi |
-| `GET` | `/api/logs?level=ALL&query=` | Evet* | Filtrelenmiş son 100 log |
-| `POST` | `/api/logs` | Evet* | Harici log kaydı |
-| `DELETE` | `/api/logs` | Evet* | Tüm logları temizler |
+| Method | Route | Auth | Açıklama |
+|---|---|---|---|
+| `GET` | `/healthz` | Hayır | DB liveness |
+| `POST` | `/api/auth/login` | Hayır | Oturum aç |
+| `GET` | `/api/auth/me` | Evet | Kullanıcı + CSRF token |
+| `POST` | `/api/auth/logout` | Evet + CSRF | Oturumu kapat |
+| `POST` | `/api/auth/password` | Evet + CSRF | Parola değiştir |
+| `GET` | `/api/metrics/realtime` | Evet | Son host snapshot |
+| `GET` | `/api/metrics/history?range=1h` | Evet | `1h`, `6h`, `24h`, `7d` |
+| `GET` | `/api/metrics/summary` | Evet | Rolling baseline |
+| `GET` | `/api/anomalies` | Evet | Anomaly geçmişi |
+| `GET` | `/api/alerts/rules` | Evet | Aktif threshold kuralları |
+| `GET` | `/api/alerts/events` | Evet | Alert geçmişi |
+| `GET/POST/DELETE` | `/api/logs` | Evet | Event akışı |
+| `GET` | `/api/system/details` | Evet | Process, port, kernel |
+| `GET` | `/api/export/*.csv` | Evet | CSV export |
 
-\* Auth yapılandırılmışsa.
-
-<details>
-<summary><strong>POST /api/logs örneği</strong></summary>
+Cookie ve CSRF ile örnek:
 
 ```bash
-curl \
-  -u 'admin:guclu-bir-parola' \
+curl -c /tmp/sentinel.cookies \
   -H 'Content-Type: application/json' \
-  -d '{
-    "level": "INFO",
-    "message": "Backup completed successfully",
-    "source": "backup_cron"
-  }' \
-  http://localhost:8000/api/logs
+  -d '{"email":"admin@sentinel.local","password":"YOUR_LONG_PASSWORD"}' \
+  http://localhost:8000/api/auth/login
 ```
 
-Kurallar:
+Login response içindeki `csrf_token`, `POST`/`DELETE` isteklerinde
+`X-CSRF-Token` header’ı olarak gönderilir. Parolayı shell history’ye yazmamak
+için gerçek kullanımda güvenli bir secret yöntemi tercih edin.
 
-- `level`: `INFO`, `WARN` veya `ERROR`
-- `message`: zorunlu, en fazla 4096 karakter
-- `source`: en fazla 64 karakter
-- Request body: en fazla 16 KiB
+## Docker Compose
 
-</details>
-
-## Geliştirme komutları
-
-| Komut | İşlev |
-|---|---|
-| `make check` | Format, vet, lint ve govulncheck |
-| `make build` | Lokal binary üretir |
-| `make run` | Derleyip `localhost:8000` üzerinde çalıştırır |
-| `make clean` | Üretilen binary'yi temizler |
-| `make docker-build` | Docker imajını oluşturur |
-| `make docker-up` | Compose servisini başlatır |
-| `make docker-down` | Compose servisini durdurur |
-| `make docker-logs` | Container loglarını takip eder |
-
-## Proje yapısı
-
-```text
-sentinel/
-├── main.go                 # Collector, API, auth ve DuckDB
-├── main_test.go            # Güvenlik/input doğrulama testleri
-├── web/
-│   ├── index.html          # Embedded dashboard
-│   ├── style.css           # Responsive kart sistemi
-│   ├── app.js              # Güvenli DOM render ve polling
-│   └── vendor/             # Sabitlenmiş Chart.js + lisansı
-├── Dockerfile              # Go 1.25.12 multi-stage build
-├── docker-compose.yml      # Read-only host monitoring
-├── Makefile                # Geliştirme komutları
-└── .env.example            # Auth örneği
+```bash
+cp .env.example .env
+# Güçlü admin parolası ayarla
+docker compose build
+docker compose up -d
 ```
+
+Compose kontratı:
+
+- Host port yayınlamaz; yalnız external `infra_net` üzerinde `8000` expose eder.
+- `pid: host`, read-only `/proc`, `/sys` ve host root mountları kullanır.
+- Root filesystem read-only, capability’ler drop, `no-new-privileges` açıktır.
+- `/data` kalıcı ve yazılabilirdir.
+
+Önce ağı oluşturun:
+
+```bash
+docker network create infra_net
+```
+
+Reverse proxy aynı network’ten `sentinel:8000` hedefine bağlanmalıdır.
+
+## Kalite kontrolleri
+
+```bash
+make test
+make vet
+make build
+docker compose config --quiet
+```
+
+`make vulncheck` güncel vulnerability verisi için ağ erişimi ister.
+
+## Veri ve retention
+
+- Metrics: 30 gün
+- Anomalies: 30 gün
+- Alert events: 30 gün
+- System events/logs: 7 gün
+- Süresi biten sessions: saatlik temizlenir
+
+`data/`, `metrics.db`, DuckDB WAL dosyaları, `.env` ve binary çıktıları Git’e
+alınmaz.
 
 </details>
 
 <details>
-<summary><strong>🇬🇧 English</strong> — Setup, security and usage</summary>
+<summary><strong>English</strong></summary>
 
-## What is Sentinel?
+## Overview
 
-Sentinel is a compact system monitor for keeping an eye on a machine without deploying a large observability platform.
+Sentinel is a compact, single-binary host telemetry console backed by DuckDB.
+It collects CPU, memory, disk, load, network, and disk I/O metrics; builds a
+rolling statistical baseline; detects z-score anomalies; and evaluates
+threshold alert rules.
 
-- CPU, memory, swap, disk, load average and uptime metrics
-- Top resource-consuming processes
-- Listening TCP ports
-- DuckDB-backed metric and log history
-- One-hour and 24-hour performance charts
-- Responsive card-based dark dashboard
-- Optional Basic Auth for the dashboard and API
-- Log ingestion endpoint for external services
-- UI and pinned Chart.js embedded in one binary
-- Graceful shutdown and automatic data retention
+The Go code is split into:
 
-Metrics are retained for **30 days** and logs for **7 days**.
+- `cmd/api`: executable entrypoint
+- `internal/app`: lifecycle and graceful shutdown
+- `internal/auth`: sessions, password hashing, CSRF, and login lockout
+- `internal/config`: environment contract
+- `internal/httpapi`: router, middleware, and handlers
+- `internal/monitor`: collection, anomaly detection, and alert evaluation
+- `internal/store`: DuckDB schema and queries
+- `web`: embedded responsive UI
 
-## Quick start
-
-### Requirements
-
-- Go `1.25.12+`
-- Docker and Docker Compose are optional
-
-### Run locally
+## First run
 
 ```bash
-# Run formatting, vet, lint and vulnerability checks
-make check
-
-# Build the binary
-make build
-
-# Run on localhost:8000
+cp .env.example .env
+# Replace ADMIN_PASSWORD with a value of at least 12 characters.
 make run
 ```
 
-Dashboard:
+Open `http://localhost:8000`.
 
-```text
-http://localhost:8000
-```
+When the users table is empty, Sentinel creates the first administrator from
+`ADMIN_EMAIL`, `ADMIN_NAME`, and `ADMIN_PASSWORD`. The bootstrap password does
+not rotate an existing account on restart. Change it from the account menu.
 
-Enable authentication for a local run:
+Legacy `AUTH_USER` and `AUTH_PASSWORD` values remain accepted as bootstrap
+fallbacks when the new variables are absent.
 
-```bash
-AUTH_USER=admin AUTH_PASSWORD='a-strong-password' make run
-```
+## Authentication and security
 
-> [!NOTE]
-> The application does not load `.env` by itself. Docker Compose reads `.env` automatically; pass variables through your shell when using `make run` directly.
+- Opaque server-side sessions; only the token hash is persisted
+- HttpOnly, SameSite=Strict session cookie
+- Session-bound CSRF token for state-changing requests
+- bcrypt password hashing
+- 15-minute lockout after five failed attempts per login and client IP
+- Password changes revoke all sessions
+- Public `/healthz`; authenticated dashboard and API
 
-## Run with Docker
+Set `AUTH_COOKIE_SECURE=true` only when the browser reaches Sentinel over
+HTTPS. Keep network deployments behind an HTTPS reverse proxy.
 
-The Compose configuration connects Sentinel to `infra_net` without publishing a host port.
+## Docker
 
 ```bash
 docker network create infra_net
 cp .env.example .env
-
-# Replace AUTH_PASSWORD inside .env
-make docker-up
+docker compose build
+docker compose up -d
 ```
 
-Alternative:
+Compose exposes port `8000` only on the external `infra_net`; it does not
+publish a host port. The container uses a read-only root filesystem, dropped
+capabilities, no-new-privileges, and read-only host inspection mounts.
+
+## Validation
 
 ```bash
-docker compose up -d --build
+make test
+make vet
+make build
+docker compose config --quiet
 ```
 
-> [!TIP]
-> `docker-compose.yml` uses only `expose: 8000`. Sentinel is expected to be reached through Nginx, Caddy, Traefik or another reverse proxy attached to the same `infra_net` network.
-
-### Host monitoring mounts
-
-| Host path | Container path | Access | Purpose |
-|---|---|---:|---|
-| `/proc` | `/host/proc` | `ro` | Processes and system metrics |
-| `/sys` | `/host/sys` | `ro` | Hardware and thermal data |
-| `/` | `/host/root` | `ro` | Host disk usage and OS information |
-| `./data` | `/data` | `rw` | Persistent DuckDB storage |
-
-The container drops every Linux capability, enables `no-new-privileges`, and runs with a read-only root filesystem.
-
-> Docker Desktop on macOS runs inside a Linux VM, so a containerized Sentinel may report VM metrics instead of physical macOS host metrics.
-
-## Security model
-
-Sentinel follows a **local/internal-first** security model:
-
-- When both `AUTH_USER` and `AUTH_PASSWORD` are set, the dashboard and `/api/*` require Basic Auth.
-- Authentication remains disabled when either value is empty.
-- `/healthz` stays unauthenticated for container probes.
-- Network-accessible Basic Auth must always be placed behind HTTPS.
-- Responses include CSP, clickjacking, MIME-sniffing and referrer protections.
-- Log payloads are validated for level, source, message length and body size.
-- API values are rendered as text rather than executable HTML.
-- Header, body, write and idle HTTP timeouts are enabled.
-- The running dashboard makes no external CDN or font request.
-
-## Configuration
-
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `8000` | HTTP listening port |
-| `DB_PATH` | `metrics.db` | DuckDB database path |
-| `AUTH_USER` | empty | Optional Basic Auth username |
-| `AUTH_PASSWORD` | empty | Optional Basic Auth password |
-| `HOST_PROC` | empty | Mounted host `/proc` path |
-| `HOST_SYS` | empty | Mounted host `/sys` path |
-| `HOST_ROOT` | empty | Mounted host root filesystem path |
-
-## API
-
-| Method | Endpoint | Auth | Description |
-|---:|---|:---:|---|
-| `GET` | `/healthz` | No | Application and DuckDB liveness |
-| `GET` | `/api/metrics/realtime` | Yes* | Current system metrics |
-| `GET` | `/api/metrics/history?range=1h` | Yes* | Raw metrics for the last hour |
-| `GET` | `/api/metrics/history?range=24h` | Yes* | Last 24 hours in five-minute buckets |
-| `GET` | `/api/system/details` | Yes* | Processes, ports, kernel and reboot state |
-| `GET` | `/api/logs?level=ALL&query=` | Yes* | Latest 100 filtered logs |
-| `POST` | `/api/logs` | Yes* | Ingest an external log |
-| `DELETE` | `/api/logs` | Yes* | Clear every stored log |
-
-\* When authentication is configured.
-
-<details>
-<summary><strong>POST /api/logs example</strong></summary>
-
-```bash
-curl \
-  -u 'admin:a-strong-password' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "level": "INFO",
-    "message": "Backup completed successfully",
-    "source": "backup_cron"
-  }' \
-  http://localhost:8000/api/logs
-```
-
-Rules:
-
-- `level`: `INFO`, `WARN` or `ERROR`
-- `message`: required, up to 4096 characters
-- `source`: up to 64 characters
-- Request body: up to 16 KiB
+Metrics, anomalies, and alerts are retained for 30 days; system events for 7
+days. Database files, `.env`, WAL files, and binaries are ignored by Git.
 
 </details>
-
-## Development commands
-
-| Command | Purpose |
-|---|---|
-| `make check` | Format, vet, lint and govulncheck |
-| `make build` | Build the local binary |
-| `make run` | Build and run on `localhost:8000` |
-| `make clean` | Remove the generated binary |
-| `make docker-build` | Build the Docker image |
-| `make docker-up` | Start the Compose service |
-| `make docker-down` | Stop the Compose service |
-| `make docker-logs` | Follow container logs |
-
-## Project layout
-
-```text
-sentinel/
-├── main.go                 # Collector, API, auth and DuckDB
-├── main_test.go            # Security and input validation tests
-├── web/
-│   ├── index.html          # Embedded dashboard
-│   ├── style.css           # Responsive card system
-│   ├── app.js              # Safe DOM rendering and polling
-│   └── vendor/             # Pinned Chart.js and its license
-├── Dockerfile              # Go 1.25.12 multi-stage build
-├── docker-compose.yml      # Read-only host monitoring
-├── Makefile                # Development commands
-└── .env.example            # Authentication example
-```
-
-</details>
-
----
-
-<div align="center">
-
-Built for the moment when `htop` is not enough, but a full observability stack is too much.
-
-**Sentinel watches quietly.**
-
-</div>

@@ -6,9 +6,9 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code and build
+# Copy source code and build the API entrypoint
 COPY . .
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o sentinel .
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o sentinel ./cmd/api
 
 # Run stage
 FROM debian:12-slim
@@ -18,10 +18,10 @@ WORKDIR /app
 COPY --from=builder /app/sentinel /app/sentinel
 
 # Expose HTTP port
-EXPOSE 8080
+EXPOSE 8000
 
 # Environment variables
-ENV PORT=8080
+ENV PORT=8000
 ENV DB_PATH=/data/metrics.db
 
 # Persistent directory volume

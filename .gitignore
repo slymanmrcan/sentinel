@@ -1,5 +1,6 @@
 # Binaries
 sentinel
+bin/
 
 # Databases
 *.db

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Sign in · Sentinel</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/login.js" defer></script>
+</head>
+<body class="login-page">
+    <main class="login-shell">
+        <section class="login-intro">
+            <div class="brand login-brand">
+                <span class="brand-mark" aria-hidden="true"><span class="shield-core"></span></span>
+                <strong>Sentinel</strong><span class="version">v2</span>
+            </div>
+            <div>
+                <span class="eyebrow">Host intelligence</span>
+                <h1>Keep watch.<br>Stay ahead.</h1>
+                <p>Private host telemetry, anomaly detection, and operational events in one focused console.</p>
+            </div>
+            <div class="login-signal"><i></i><span>Local monitor ready</span><code>session protected</code></div>
+        </section>
+
+        <section class="login-card">
+            <div class="login-card-head">
+                <span class="eyebrow">Secure access</span>
+                <h2>Welcome back</h2>
+                <p>Sign in with the administrator account configured for this Sentinel instance.</p>
+            </div>
+            <form id="loginForm">
+                <label>Login<input id="login" name="login" type="text" autocomplete="username" placeholder="admin@sentinel.local" required autofocus></label>
+                <label>Password<input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required></label>
+                <div class="form-message" id="loginMessage" role="alert"></div>
+                <button class="login-button" id="loginButton" type="submit"><span>Open telemetry</span><span aria-hidden="true">→</span></button>
+            </form>
+            <p class="login-footnote">Credentials stay on this instance. The browser receives an HttpOnly session cookie.</p>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,258 +1,258 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
-    <title>Sentinel System Monitor</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="vendor/chart.umd.min.js" defer></script>
-    <script src="app.js" defer></script>
+    <title>Sentinel · Host telemetry</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/vendor/chart.umd.min.js" defer></script>
+    <script src="/app.js" defer></script>
 </head>
 <body>
     <div class="app-shell">
-        <header class="topbar">
-            <div class="brand-block">
-                <div class="brand-mark" aria-hidden="true">
-                    <span class="pulse-indicator status-ok" id="statusIndicator"></span>
-                </div>
-                <div>
-                    <p class="eyebrow">System monitor</p>
-                    <h1>Sentinel</h1>
-                </div>
+        <aside class="sidebar" id="sidebar">
+            <div class="brand">
+                <span class="brand-mark" aria-hidden="true">
+                    <span class="shield-core"></span>
+                </span>
+                <strong>Sentinel</strong>
+                <span class="version">v2</span>
             </div>
 
-            <div class="topbar-status" aria-live="polite">
-                <span class="status-chip" id="statusText">Connecting</span>
-                <span class="last-updated" id="lastUpdated">Waiting for metrics…</span>
+            <div class="nav-label">Monitor</div>
+            <nav class="primary-nav" aria-label="Monitor sections">
+                <a class="nav-item active" href="#overview" data-section="overview"><span aria-hidden="true">▦</span>Overview</a>
+                <a class="nav-item" href="#performance" data-section="performance"><span aria-hidden="true">⌁</span>Performance</a>
+                <a class="nav-item" href="#anomalies" data-section="anomalies"><span aria-hidden="true">⌁</span>Anomalies</a>
+                <a class="nav-item" href="#alerts" data-section="alerts"><span aria-hidden="true">♧</span>Alerts <b id="alertNavCount">0</b></a>
+                <a class="nav-item" href="#inspector" data-section="inspector"><span aria-hidden="true">⌕</span>Inspector</a>
+                <a class="nav-item" href="#events" data-section="events"><span aria-hidden="true">≡</span>Events</a>
+            </nav>
+
+            <div class="sidebar-account">
+                <button class="account-button" id="accountButton" type="button">
+                    <span class="avatar" id="userInitials">AD</span>
+                    <span>
+                        <strong id="userName">Loading…</strong>
+                        <small id="userLogin">—</small>
+                    </span>
+                    <span class="account-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <button class="signout-button" id="signOutButton" type="button"><span aria-hidden="true">↪</span> Sign out</button>
             </div>
+        </aside>
 
-            <dl class="host-strip">
-                <div>
-                    <dt>Host</dt>
-                    <dd id="hostName">Loading…</dd>
+        <div class="workspace">
+            <header class="topbar">
+                <button class="menu-button" id="menuButton" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
+                <div class="page-title">
+                    <strong>Host telemetry</strong>
+                    <span class="health-chip"><i id="healthDot"></i><span id="healthText">Connecting</span></span>
+                    <code id="agentName">agent · waiting</code>
                 </div>
-                <div>
-                    <dt>Uptime</dt>
-                    <dd id="uptime">Loading…</dd>
+                <div class="topbar-actions">
+                    <a class="export-button" href="/api/export/metrics.csv" download><span aria-hidden="true">⇩</span> Export</a>
+                    <span class="updated-at" id="updatedAt">waiting for data</span>
                 </div>
-                <div>
-                    <dt>OS</dt>
-                    <dd id="osType">Loading…</dd>
-                </div>
-                <div>
-                    <dt>Processes</dt>
-                    <dd id="processes">Loading…</dd>
-                </div>
-            </dl>
-        </header>
+            </header>
 
-        <main class="dashboard">
-            <section class="overview-section" aria-labelledby="overviewTitle">
-                <div class="section-heading compact-heading">
-                    <div>
-                        <p class="eyebrow">Live overview</p>
-                        <h2 id="overviewTitle">Resource health</h2>
+            <main>
+                <section class="dashboard-section" id="overview">
+                    <div class="section-title">
+                        <h1>Live overview</h1>
+                        <span>10s collection · 2s refresh</span>
                     </div>
-                    <span class="refresh-note">Updates every 2 seconds</span>
-                </div>
 
-                <div class="kpi-grid">
-                    <article class="kpi-card tone-violet" id="cpuCard">
-                        <div class="kpi-header">
-                            <div>
-                                <span class="kpi-label">CPU usage</span>
-                                <strong class="kpi-value" id="cpuValue">0.0%</strong>
+                    <div class="metric-grid">
+                        <article class="metric-card" id="cpuCard">
+                            <div class="metric-head"><span>CPU usage</span><em id="cpuState">Normal</em></div>
+                            <strong class="metric-value" id="cpuValue">0.0%</strong>
+                            <div class="metric-track"><i id="cpuBar"></i></div>
+                            <div class="metric-meta"><span>cores <b id="cpuCores">—</b></span><span>temp <b id="cpuTemp">—</b></span></div>
+                        </article>
+                        <article class="metric-card" id="memoryCard">
+                            <div class="metric-head"><span>Memory</span><em id="memoryState">Normal</em></div>
+                            <strong class="metric-value" id="memoryValue">0.0%</strong>
+                            <div class="metric-track"><i id="memoryBar"></i></div>
+                            <div class="metric-meta"><span>used <b id="memoryUsed">—</b></span><span>total <b id="memoryTotal">—</b></span></div>
+                        </article>
+                        <article class="metric-card" id="diskCard">
+                            <div class="metric-head"><span>Disk</span><em id="diskState">Normal</em></div>
+                            <strong class="metric-value" id="diskValue">0.0%</strong>
+                            <div class="metric-track"><i id="diskBar"></i></div>
+                            <div class="metric-meta"><span>used <b id="diskUsed">—</b></span><span>total <b id="diskTotal">—</b></span></div>
+                        </article>
+                        <article class="metric-card metric-card-secondary">
+                            <div class="metric-head"><span>Load average</span><em>1 / 5 / 15m</em></div>
+                            <strong class="metric-value metric-value-small" id="loadValue">0.00 · 0.00 · 0.00</strong>
+                            <div class="metric-track"><i id="loadBar"></i></div>
+                            <div class="metric-meta"><span>swap <b id="swapValue">—</b></span><span id="loadHint">per core —</span></div>
+                        </article>
+                        <article class="metric-card metric-card-secondary">
+                            <div class="metric-head"><span>Network I/O</span><em>RX / TX</em></div>
+                            <strong class="metric-value metric-value-small" id="networkValue">0 B/s</strong>
+                            <div class="metric-track"><i id="networkBar"></i></div>
+                            <div class="metric-meta"><span>out <b id="networkOut">0 B/s</b></span><span id="networkTotal">0 B total</span></div>
+                        </article>
+                        <article class="metric-card metric-card-secondary">
+                            <div class="metric-head"><span>Disk I/O</span><em>I/O</em></div>
+                            <strong class="metric-value metric-value-small" id="diskReadValue">0 B/s</strong>
+                            <div class="metric-track"><i id="diskIOBar"></i></div>
+                            <div class="metric-meta"><span>write <b id="diskWriteValue">0 B/s</b></span><span>live throughput</span></div>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="dashboard-section" id="performance">
+                    <div class="section-title">
+                        <h2>Performance history</h2>
+                        <span id="sampleCount">0 samples · 1h window</span>
+                    </div>
+                    <div class="performance-grid">
+                        <article class="panel chart-panel">
+                            <div class="panel-heading">
+                                <h3>Resource timeline</h3>
+                                <div class="chart-controls">
+                                    <div class="series-controls" aria-label="Visible chart series">
+                                        <button class="series-button active cpu" type="button" data-series="0">CPU</button>
+                                        <button class="series-button active memory" type="button" data-series="1">RAM</button>
+                                        <button class="series-button disk" type="button" data-series="2">Disk</button>
+                                        <button class="series-button net" type="button" data-series="3">Net in</button>
+                                        <button class="series-button net" type="button" data-series="4">Net out</button>
+                                    </div>
+                                    <div class="range-controls" aria-label="Chart time range">
+                                        <button class="range-button active" type="button" data-range="1h">1H</button>
+                                        <button class="range-button" type="button" data-range="6h">6H</button>
+                                        <button class="range-button" type="button" data-range="24h">24H</button>
+                                        <button class="range-button" type="button" data-range="7d">7D</button>
+                                    </div>
+                                </div>
                             </div>
-                            <span class="metric-state" id="cpuState">Normal</span>
-                        </div>
-                        <div class="progress-track" aria-hidden="true">
-                            <span class="progress-fill" id="cpuBar"></span>
-                        </div>
-                        <dl class="mini-stats">
-                            <div><dt>Cores</dt><dd id="cpuCount">--</dd></div>
-                            <div><dt>Temperature</dt><dd id="cpuTemp">--</dd></div>
-                        </dl>
-                    </article>
+                            <div class="chart-wrap"><canvas id="metricsChart"></canvas></div>
+                        </article>
 
-                    <article class="kpi-card tone-green" id="ramCard">
-                        <div class="kpi-header">
-                            <div>
-                                <span class="kpi-label">Memory</span>
-                                <strong class="kpi-value" id="ramValue">0.0%</strong>
+                        <article class="panel machine-panel">
+                            <div class="panel-heading"><h3>Machine</h3></div>
+                            <dl class="machine-list">
+                                <div><dt>CPU model</dt><dd id="cpuModel">—</dd></div>
+                                <div><dt>Operating system</dt><dd id="osName">—</dd></div>
+                                <div><dt>Kernel</dt><dd id="kernelVersion">—</dd></div>
+                                <div><dt>Uptime</dt><dd id="uptime">—</dd></div>
+                                <div><dt>Processes</dt><dd id="processCount">—</dd></div>
+                                <div><dt>System state</dt><dd><span class="status-label" id="systemState">Checking</span></dd></div>
+                            </dl>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="dashboard-section" id="anomalies">
+                    <div class="section-title">
+                        <h2>Anomaly detection</h2>
+                        <span>z-score · rolling 1h baseline</span>
+                    </div>
+                    <div class="analysis-grid">
+                        <article class="panel">
+                            <div class="panel-heading">
+                                <h3>Detected anomalies <b class="count-badge" id="anomalyCount">0</b></h3>
+                                <a class="text-action" href="/api/export/anomalies.csv" download>Export</a>
                             </div>
-                            <span class="metric-state" id="ramState">Normal</span>
-                        </div>
-                        <div class="progress-track" aria-hidden="true">
-                            <span class="progress-fill" id="ramBar"></span>
-                        </div>
-                        <dl class="mini-stats">
-                            <div><dt>Used</dt><dd id="ramUsed">--</dd></div>
-                            <div><dt>Total</dt><dd id="ramTotal">--</dd></div>
-                        </dl>
-                    </article>
-
-                    <article class="kpi-card tone-cyan" id="diskCard">
-                        <div class="kpi-header">
-                            <div>
-                                <span class="kpi-label">Disk</span>
-                                <strong class="kpi-value" id="diskValue">0.0%</strong>
+                            <div class="event-list" id="anomalyList">
+                                <div class="empty-state">Building a statistical baseline…</div>
                             </div>
-                            <span class="metric-state" id="diskState">Normal</span>
-                        </div>
-                        <div class="progress-track" aria-hidden="true">
-                            <span class="progress-fill" id="diskBar"></span>
-                        </div>
-                        <dl class="mini-stats">
-                            <div><dt>Used</dt><dd id="diskUsed">--</dd></div>
-                            <div><dt>Total</dt><dd id="diskTotal">--</dd></div>
-                        </dl>
-                    </article>
-
-                    <article class="kpi-card tone-amber">
-                        <div class="kpi-header">
-                            <div>
-                                <span class="kpi-label">Load average</span>
-                                <strong class="kpi-value kpi-value-small" id="cpuLoad">--</strong>
+                        </article>
+                        <article class="panel">
+                            <div class="panel-heading"><h3>Statistical baseline</h3><span id="baselineState">building</span></div>
+                            <div class="table-scroll">
+                                <table>
+                                    <thead><tr><th>Metric</th><th>Mean</th><th>σ</th><th>Samples</th></tr></thead>
+                                    <tbody id="baselineTable"><tr><td colspan="4">Loading…</td></tr></tbody>
+                                </table>
                             </div>
-                            <span class="metric-state">1 / 5 / 15m</span>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="dashboard-section" id="alerts">
+                    <div class="section-title">
+                        <h2>Alerting</h2>
+                        <span>threshold rules · 10m cooldown</span>
+                    </div>
+                    <div class="analysis-grid">
+                        <article class="panel">
+                            <div class="panel-heading"><h3>Active rules</h3></div>
+                            <div class="rule-grid" id="alertRules"><div class="empty-state">Loading rules…</div></div>
+                        </article>
+                        <article class="panel">
+                            <div class="panel-heading">
+                                <h3>Recent alerts <b class="count-badge" id="alertCount">0</b></h3>
+                                <a class="text-action" href="/api/export/alerts.csv" download>Export</a>
+                            </div>
+                            <div class="event-list" id="alertList"><div class="empty-state">No alert events.</div></div>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="dashboard-section" id="inspector">
+                    <div class="section-title"><h2>Inspector</h2><span>processes · listening TCP ports</span></div>
+                    <div class="analysis-grid">
+                        <article class="panel">
+                            <div class="panel-heading"><h3>Top processes</h3><span>by memory</span></div>
+                            <div class="table-scroll table-scroll-tall">
+                                <table>
+                                    <thead><tr><th>PID</th><th>Process</th><th>CPU</th><th>RAM</th></tr></thead>
+                                    <tbody id="processTable"><tr><td colspan="4">Loading…</td></tr></tbody>
+                                </table>
+                            </div>
+                        </article>
+                        <article class="panel">
+                            <div class="panel-heading"><h3>Listening ports</h3><span>TCP</span></div>
+                            <div class="table-scroll table-scroll-tall">
+                                <table>
+                                    <thead><tr><th>Port</th><th>Process</th><th>PID</th></tr></thead>
+                                    <tbody id="portTable"><tr><td colspan="3">Loading…</td></tr></tbody>
+                                </table>
+                            </div>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="dashboard-section" id="events">
+                    <div class="section-title"><h2>Events</h2><span>retained for 7 days</span></div>
+                    <article class="panel">
+                        <div class="panel-heading event-heading">
+                            <h3>System event stream <b class="count-badge" id="eventCount">0</b></h3>
+                            <div class="event-controls">
+                                <input id="eventSearch" type="search" placeholder="Search events" aria-label="Search events">
+                                <select id="eventLevel" aria-label="Filter event level">
+                                    <option value="ALL">All levels</option>
+                                    <option value="INFO">Info</option>
+                                    <option value="WARN">Warning</option>
+                                    <option value="ERROR">Error</option>
+                                </select>
+                                <a class="text-action" href="/api/export/logs.csv" download>Export</a>
+                                <button class="clear-button" id="clearEventsButton" type="button">Clear</button>
+                            </div>
                         </div>
-                        <div class="load-divider"></div>
-                        <dl class="mini-stats mini-stats-single">
-                            <div><dt>Swap</dt><dd id="swapInfo">--</dd></div>
-                        </dl>
+                        <div class="event-list event-stream" id="eventList"><div class="empty-state">Loading events…</div></div>
                     </article>
-                </div>
-            </section>
-
-            <section class="primary-grid" aria-label="Performance and host details">
-                <article class="panel chart-panel">
-                    <div class="section-heading">
-                        <div>
-                            <p class="eyebrow">Performance</p>
-                            <h2>Usage history</h2>
-                        </div>
-                        <div class="segmented-control" aria-label="Chart time range">
-                            <button class="range-button active" id="btn-1h" type="button" data-range="1h">1 hour</button>
-                            <button class="range-button" id="btn-24h" type="button" data-range="24h">24 hours</button>
-                        </div>
-                    </div>
-                    <div class="chart-container">
-                        <canvas id="metricsChart" aria-label="CPU and memory usage chart"></canvas>
-                    </div>
-                </article>
-
-                <aside class="panel host-panel" aria-labelledby="hostDetailsTitle">
-                    <div class="section-heading">
-                        <div>
-                            <p class="eyebrow">Machine</p>
-                            <h2 id="hostDetailsTitle">Host details</h2>
-                        </div>
-                    </div>
-                    <dl class="detail-list">
-                        <div>
-                            <dt>CPU model</dt>
-                            <dd id="cpuModel">--</dd>
-                        </div>
-                        <div>
-                            <dt>Kernel</dt>
-                            <dd id="kernelPill">Loading…</dd>
-                        </div>
-                        <div>
-                            <dt>System state</dt>
-                            <dd><span class="inline-status" id="rebootPill">Checking…</span></dd>
-                        </div>
-                        <div>
-                            <dt>Monitoring mode</dt>
-                            <dd>Read-only host view</dd>
-                        </div>
-                    </dl>
-                </aside>
-            </section>
-
-            <section class="inspector-section" aria-labelledby="inspectorTitle">
-                <div class="section-heading compact-heading">
-                    <div>
-                        <p class="eyebrow">Inspector</p>
-                        <h2 id="inspectorTitle">Processes and network</h2>
-                    </div>
-                </div>
-
-                <div class="inspector-grid">
-                    <article class="panel table-panel">
-                        <div class="panel-title-row">
-                            <h3>Top processes</h3>
-                            <span>By memory</span>
-                        </div>
-                        <div class="table-container">
-                            <table class="inspector-table">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">PID</th>
-                                        <th scope="col">Process</th>
-                                        <th scope="col" class="align-right">CPU</th>
-                                        <th scope="col" class="align-right">RAM</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="processesTableBody">
-                                    <tr><td colspan="4" class="empty-cell">Loading processes…</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </article>
-
-                    <article class="panel table-panel">
-                        <div class="panel-title-row">
-                            <h3>Listening ports</h3>
-                            <span>TCP</span>
-                        </div>
-                        <div class="table-container">
-                            <table class="inspector-table">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Port</th>
-                                        <th scope="col">Process</th>
-                                        <th scope="col" class="align-right">PID</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="portsTableBody">
-                                    <tr><td colspan="3" class="empty-cell">Loading ports…</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </article>
-                </div>
-            </section>
-
-            <section class="panel logs-section" aria-labelledby="logsTitle">
-                <div class="section-heading logs-heading">
-                    <div>
-                        <p class="eyebrow">Events</p>
-                        <h2 id="logsTitle">System logs <span class="count-badge" id="logCount">0</span></h2>
-                    </div>
-                    <div class="logs-controls">
-                        <label class="search-field">
-                            <span class="sr-only">Search logs</span>
-                            <input type="search" id="logSearch" placeholder="Search messages…">
-                        </label>
-                        <label>
-                            <span class="sr-only">Filter by level</span>
-                            <select id="logLevel">
-                                <option value="ALL">All levels</option>
-                                <option value="INFO">Info</option>
-                                <option value="WARN">Warning</option>
-                                <option value="ERROR">Error</option>
-                            </select>
-                        </label>
-                        <button class="danger-button" id="clearLogsButton" type="button">Clear logs</button>
-                    </div>
-                </div>
-
-                <div class="log-list" id="logTerminal" aria-live="polite">
-                    <div class="empty-state">Loading logs…</div>
-                </div>
-            </section>
-        </main>
+                </section>
+            </main>
+        </div>
     </div>
+
+    <dialog class="account-dialog" id="accountDialog">
+        <form method="dialog" class="dialog-card" id="passwordForm">
+            <div class="dialog-heading">
+                <div><span class="eyebrow">Account security</span><h2>Change password</h2></div>
+                <button class="icon-button" value="cancel" aria-label="Close">×</button>
+            </div>
+            <p>Changing your password signs out every active Sentinel session.</p>
+            <label>Current password<input id="currentPassword" type="password" autocomplete="current-password" required></label>
+            <label>New password<input id="newPassword" type="password" autocomplete="new-password" minlength="12" required></label>
+            <div class="form-message" id="passwordMessage" role="status"></div>
+            <div class="dialog-actions"><button value="cancel">Cancel</button><button class="primary-button" id="savePasswordButton" type="submit">Update password</button></div>
+        </form>
+    </dialog>
 </body>
 </html>

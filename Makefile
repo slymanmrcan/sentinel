@@ -1,13 +1,13 @@
-.PHONY: all build run clean docker-build docker-up docker-down docker-logs fmt vet lint vulncheck check
+.PHONY: all build run clean test docker-build docker-up docker-down docker-logs fmt vet lint vulncheck check
 
-BINARY_NAME=sentinel
-DB_FILE=metrics.db
+BINARY_NAME=bin/sentinel
 
 all: check build
 
 build:
 	@echo "Building local Go binary..."
-	go build -o $(BINARY_NAME) .
+	@mkdir -p bin
+	go build -o $(BINARY_NAME) ./cmd/api
 
 run: build
 	@echo "Running sentinel locally on port 8000..."
@@ -16,8 +16,10 @@ run: build
 clean:
 	@echo "Cleaning up build artifacts..."
 	rm -f $(BINARY_NAME)
-	# Optionally comment out the DB delete if you want persistence
-	# rm -f $(DB_FILE)
+
+test:
+	@echo "Running Go tests..."
+	go test ./...
 
 fmt:
 	@echo "Formatting Go code..."
@@ -40,7 +42,7 @@ vulncheck:
 	@echo "Running vulnerability check (govulncheck)..."
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
-check: fmt vet lint vulncheck
+check: fmt test vet lint vulncheck
 	@echo "All quality checks completed successfully!"
 
 docker-build:

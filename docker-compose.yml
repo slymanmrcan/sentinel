@@ -16,16 +16,20 @@ services:
       resources:
         limits:
           cpus: '0.25'
-          memory: 64M
+          memory: 256M
     environment:
       - PORT=8000
       - DB_PATH=/data/metrics.db
       - HOST_PROC=/host/proc
       - HOST_SYS=/host/sys
       - HOST_ROOT=/host/root
-      # Define these inside a local .env file (git ignored)
-      - AUTH_USER
-      - AUTH_PASSWORD
+      # Define auth values inside a local .env file (git ignored)
+      - ADMIN_EMAIL
+      - ADMIN_PASSWORD
+      - ADMIN_NAME
+      - AUTH_COOKIE_SECURE
+      - AUTH_SESSION_TTL
+      - TRUST_PROXY_HEADERS
     volumes:
       - ./data:/data
       - /proc:/host/proc:ro
