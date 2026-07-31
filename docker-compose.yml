@@ -47,6 +47,8 @@ services:
       - /tmp:size=16m,mode=1777
     networks:
       - infra_net
+    group_add:
+      - "${DOCKER_GID}"
 
 networks:
   infra_net:
