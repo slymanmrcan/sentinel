@@ -165,6 +165,16 @@ erişimi pratikte host üzerinde çok yüksek yetki verir. Bu yüzden varsayıla
 Compose dosyası socket mount etmez. Kurulum seçenekleri ve metrik formülleri
 için [container metrics rehberine](docs/container-metrics.md) bakın.
 
+Güvenilir tek-host kurulumu için repository'deki açık opt-in override'ı
+kullanın:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.containers.yml up -d --build
+```
+
+Bu komut container telemetrisini açar ve Linux Docker socket'ini bağlar.
+Varsayılan `docker compose up` socket erişimi vermez.
+
 Cookie ve CSRF ile örnek:
 
 ```bash
@@ -310,6 +320,12 @@ Docker API proxy. Directly mounting `docker.sock` grants highly privileged
 daemon access even if the mount itself is marked read-only, so the default
 Compose file deliberately does not mount it. See
 [container metrics](docs/container-metrics.md).
+
+For an explicitly trusted single-host installation, use the opt-in override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.containers.yml up -d --build
+```
 
 ## Validation
 

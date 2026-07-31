@@ -38,6 +38,22 @@ read-only-looking bind mount such as
 the Docker API read-only: API calls can still mutate the daemon. For that
 reason, the repository's default Compose file never mounts this socket.
 
+For an explicitly trusted Linux host, the repository includes an opt-in
+override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.containers.yml up -d --build
+```
+
+After startup, verify the two required flags without printing the full Compose
+environment, which may contain secrets:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.containers.yml exec sentinel \
+  sh -c 'test "$CONTAINER_METRICS_ENABLED" = true && test -S "$DOCKER_SOCKET"'
+docker compose -f docker-compose.yml -f docker-compose.containers.yml logs --tail=100 sentinel
+```
+
 ## Metric semantics
 
 - CPU uses Docker's current versus previous CPU counter delta and online CPU
