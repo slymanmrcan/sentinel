@@ -103,6 +103,8 @@ main { display: flex; flex-direction: column; gap: 22px; padding: 24px 22px 44px
 .metric-card[data-state="critical"] .metric-track i { background: var(--red); }
 .metric-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; color: #555b5b; font-family: var(--mono); font-size: 7px; }
 .metric-meta b { color: #777d7d; font-weight: 500; }
+.metric-live { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 5px; color: #484e4e; font-family: var(--mono); font-size: 7px; }
+.metric-live b { color: #676d6d; font-weight: 500; }
 
 .performance-grid, .analysis-grid { display: grid; grid-template-columns: minmax(0,2.05fr) minmax(270px,.75fr); gap: 12px; }
 .analysis-grid { grid-template-columns: minmax(0,1.65fr) minmax(310px,1fr); }

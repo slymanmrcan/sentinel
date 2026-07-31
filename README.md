@@ -135,6 +135,11 @@ erişilemiyor ve tüm istekler güvenilir proxy’den geliyorsa kullanılmalıd�
 | `GET` | `/api/system/details` | Evet | Process, port, kernel |
 | `GET` | `/api/export/*.csv` | Evet | CSV export |
 
+Network kartı anlık inbound/outbound hızını ve host açılışından beri biriken
+inbound, outbound ve toplam byte sayaçlarını gösterir. Bu host seviyesinde tüm
+ağ arayüzlerinin toplamıdır; bridge, veth ve loopback trafiğini içerebileceği
+için internet sağlayıcısı fatura ölçümü olarak değerlendirilmemelidir.
+
 Cookie ve CSRF ile örnek:
 
 ```bash
@@ -281,5 +286,10 @@ docker compose config --quiet
 
 Metrics, anomalies, and alerts are retained for 30 days; system events for 7
 days. Database files, `.env`, WAL files, and binaries are ignored by Git.
+
+The network card shows live inbound/outbound throughput and the inbound,
+outbound, and combined byte counters accumulated since the host booted. These
+are host-wide interface counters and can include bridge, veth, and loopback
+traffic, so they should not be treated as ISP billing measurements.
 
 </details>

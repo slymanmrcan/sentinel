@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
     <title>Sentinel · Host telemetry</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/style.css">
     <script src="/vendor/chart.umd.min.js" defer></script>
     <script src="/app.js" defer></script>
@@ -95,11 +96,12 @@
                             <div class="metric-track"><i id="loadBar"></i></div>
                             <div class="metric-meta"><span>1m normalized</span><span id="loadHint">per core —</span></div>
                         </article>
-                        <article class="metric-card metric-card-secondary">
-                            <div class="metric-head"><span>Network I/O</span><em>RX / TX</em></div>
-                            <strong class="metric-value metric-value-small" id="networkValue">0 B/s</strong>
+                        <article class="metric-card metric-card-secondary" title="Host network traffic across all interfaces since the last boot">
+                            <div class="metric-head"><span>Network traffic</span><em>since boot</em></div>
+                            <strong class="metric-value metric-value-small" id="networkTotal">0 B</strong>
                             <div class="metric-track"><i id="networkBar"></i></div>
-                            <div class="metric-meta"><span>out <b id="networkOut">0 B/s</b></span><span id="networkTotal">0 B total</span></div>
+                            <div class="metric-meta"><span>in <b id="networkInTotal">0 B</b></span><span>out <b id="networkOutTotal">0 B</b></span></div>
+                            <div class="metric-live"><span>live in <b id="networkInRate">0 B/s</b></span><span>out <b id="networkOutRate">0 B/s</b></span></div>
                         </article>
                         <article class="metric-card metric-card-secondary">
                             <div class="metric-head"><span>Disk I/O</span><em>I/O</em></div>

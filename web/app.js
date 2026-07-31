@@ -169,9 +169,13 @@ function renderRealtime(metric) {
     setWidth('loadBar', loadPercent);
     setText('loadHint', `per core ${(Number(metric.load_1) / cores).toFixed(2)}`);
 
-    setText('networkValue', formatRate(metric.net_rx_bps));
-    setText('networkOut', formatRate(metric.net_tx_bps));
-    setText('networkTotal', `${formatBytes((metric.net_rx_total || 0) + (metric.net_tx_total || 0))} total`);
+    const netRxTotal = Number(metric.net_rx_total) || 0;
+    const netTxTotal = Number(metric.net_tx_total) || 0;
+    setText('networkTotal', formatBytes(netRxTotal + netTxTotal));
+    setText('networkInTotal', formatBytes(netRxTotal));
+    setText('networkOutTotal', formatBytes(netTxTotal));
+    setText('networkInRate', formatRate(metric.net_rx_bps));
+    setText('networkOutRate', formatRate(metric.net_tx_bps));
     setWidth('networkBar', logarithmicWidth((metric.net_rx_bps || 0) + (metric.net_tx_bps || 0)));
     setText('diskReadValue', formatRate(metric.disk_read_bps));
     setText('diskWriteValue', formatRate(metric.disk_write_bps));
