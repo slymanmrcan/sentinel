@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadRealtime(),
         loadHistory(),
         loadSystemDetails(),
+        loadContainers(),
         loadAnalysis(),
         loadAlerts(),
         loadEvents()
@@ -23,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.setInterval(loadRealtime, 2000);
     window.setInterval(loadSystemDetails, 15000);
+    window.setInterval(loadContainers, 15000);
     window.setInterval(loadAnalysis, 30000);
     window.setInterval(loadAlerts, 30000);
     window.setInterval(loadEvents, 10000);
@@ -148,37 +150,38 @@ async function loadRealtime() {
 }
 
 function renderRealtime(metric) {
-    updatePercentMetric('cpu', metric.cpu_percent);
-    updatePercentMetric('memory', metric.ram_percent);
-    updatePercentMetric('disk', metric.disk_percent);
-    updatePercentMetric('swap', metric.swap_percent);
+    const unavailable = new Set(metric.unavailable || []);
+    updatePercentMetric('cpu', metric.cpu_percent, unavailable.has('cpu'));
+    updatePercentMetric('memory', metric.ram_percent, unavailable.has('memory'));
+    updatePercentMetric('disk', metric.disk_percent, unavailable.has('disk'));
+    updatePercentMetric('swap', metric.swap_percent, unavailable.has('swap'));
 
     setText('cpuCores', metric.cpu_cores || '—');
-    setText('cpuTemp', metric.cpu_temp > 0 ? `${Number(metric.cpu_temp).toFixed(1)}°C` : '—');
-    setText('memoryUsed', formatBytes(metric.ram_used));
-    setText('memoryTotal', formatBytes(metric.ram_total));
-    setText('diskUsed', formatBytes(metric.disk_used));
-    setText('diskTotal', formatBytes(metric.disk_total));
-    setText('swapUsed', formatBytes(metric.swap_used));
-    setText('swapTotal', formatBytes(metric.swap_total));
+    setText('cpuTemp', unavailable.has('cpu_temp') ? 'unavailable' : `${Number(metric.cpu_temp).toFixed(1)}°C`);
+    setText('memoryUsed', unavailable.has('memory') ? '—' : formatBytes(metric.ram_used));
+    setText('memoryTotal', unavailable.has('memory') ? '—' : formatBytes(metric.ram_total));
+    setText('diskUsed', unavailable.has('disk') ? '—' : formatBytes(metric.disk_used));
+    setText('diskTotal', unavailable.has('disk') ? '—' : formatBytes(metric.disk_total));
+    setText('swapUsed', unavailable.has('swap') ? '—' : formatBytes(metric.swap_used));
+    setText('swapTotal', unavailable.has('swap') ? '—' : formatBytes(metric.swap_total));
 
     const loads = [metric.load_1, metric.load_5, metric.load_15].map((value) => Number(value || 0).toFixed(2));
-    setText('loadValue', loads.join(' · '));
+    setText('loadValue', unavailable.has('load') ? '—' : loads.join(' · '));
     const cores = Math.max(1, Number(metric.cpu_cores) || 1);
     const loadPercent = clamp((Number(metric.load_1) / cores) * 100);
     setWidth('loadBar', loadPercent);
-    setText('loadHint', `per core ${(Number(metric.load_1) / cores).toFixed(2)}`);
+    setText('loadHint', unavailable.has('load') ? 'unavailable' : `per core ${(Number(metric.load_1) / cores).toFixed(2)}`);
 
     const netRxTotal = Number(metric.net_rx_total) || 0;
     const netTxTotal = Number(metric.net_tx_total) || 0;
-    setText('networkTotal', formatBytes(netRxTotal + netTxTotal));
-    setText('networkInTotal', formatBytes(netRxTotal));
-    setText('networkOutTotal', formatBytes(netTxTotal));
-    setText('networkInRate', formatRate(metric.net_rx_bps));
-    setText('networkOutRate', formatRate(metric.net_tx_bps));
+    setText('networkTotal', unavailable.has('network') ? '—' : formatBytes(netRxTotal + netTxTotal));
+    setText('networkInTotal', unavailable.has('network') ? '—' : formatBytes(netRxTotal));
+    setText('networkOutTotal', unavailable.has('network') ? '—' : formatBytes(netTxTotal));
+    setText('networkInRate', unavailable.has('network') ? '—' : formatRate(metric.net_rx_bps));
+    setText('networkOutRate', unavailable.has('network') ? '—' : formatRate(metric.net_tx_bps));
     setWidth('networkBar', logarithmicWidth((metric.net_rx_bps || 0) + (metric.net_tx_bps || 0)));
-    setText('diskReadValue', formatRate(metric.disk_read_bps));
-    setText('diskWriteValue', formatRate(metric.disk_write_bps));
+    setText('diskReadValue', unavailable.has('disk_io') ? '—' : formatRate(metric.disk_read_bps));
+    setText('diskWriteValue', unavailable.has('disk_io') ? '—' : formatRate(metric.disk_write_bps));
     setWidth('diskIOBar', logarithmicWidth((metric.disk_read_bps || 0) + (metric.disk_write_bps || 0)));
 
     setText('cpuModel', metric.cpu_model || '—');
@@ -196,11 +199,20 @@ function renderRealtime(metric) {
     );
     if (peak > 90) setHealth('critical', 'Critical');
     else if (peak > 75) setHealth('warning', 'Watch');
+    else if (unavailable.size > 0) setHealth('warning', 'Partial data');
     else setHealth('healthy', 'Healthy');
 }
 
-function updatePercentMetric(prefix, rawValue) {
+function updatePercentMetric(prefix, rawValue, unavailable = false) {
     const value = clamp(rawValue);
+    if (unavailable) {
+        const card = document.getElementById(`${prefix}Card`);
+        card.dataset.state = 'unavailable';
+        setText(`${prefix}Value`, '—');
+        setText(`${prefix}State`, 'Unavailable');
+        setWidth(`${prefix}Bar`, 0);
+        return;
+    }
     const status = value > 90 ? 'critical' : value > 75 ? 'warning' : 'healthy';
     const card = document.getElementById(`${prefix}Card`);
     card.dataset.state = status;
@@ -399,6 +411,84 @@ function renderPortTable(ports) {
     ports.forEach((port) => {
         const row = document.createElement('tr');
         row.append(cell(`:${port.port}`), cell(port.name || 'Unknown'), cell(port.pid || '—'));
+        fragment.appendChild(row);
+    });
+    body.replaceChildren(fragment);
+}
+
+async function loadContainers() {
+    try {
+        const response = await apiFetch('/api/containers');
+        if (!response.ok) throw new Error(`Containers returned ${response.status}`);
+        renderContainers(await response.json());
+    } catch (error) {
+        console.error('Unable to load container metrics:', error);
+        setText('containerStatus', 'Container telemetry unavailable');
+        setText('containerCollectionState', 'collection failed');
+        renderContainerRows([]);
+    }
+}
+
+function renderContainers(snapshot) {
+    const containers = snapshot.containers || [];
+    if (!snapshot.enabled) {
+        setText('containerCollectionState', 'optional Docker telemetry · disabled');
+        setText('containerStatus', snapshot.message || 'Enable container metrics in configuration');
+        renderContainerSummary(null);
+        renderContainerRows([], 'Container metrics are disabled. See the setup guide to enable them safely.');
+        return;
+    }
+    if (!snapshot.available) {
+        setText('containerCollectionState', 'optional Docker telemetry · unavailable');
+        setText('containerStatus', snapshot.message || 'Docker metrics are unavailable');
+        renderContainerSummary(null);
+        renderContainerRows([], 'Docker metrics are enabled but unavailable. Check the configured API or socket access.');
+        return;
+    }
+    const updated = snapshot.collected_at ? new Date(snapshot.collected_at).toLocaleTimeString() : 'just now';
+    setText('containerCollectionState', `Docker telemetry · updated ${updated}`);
+    setText('containerStatus', containers.length ? `${containers.length} running` : 'No running containers');
+    renderContainerSummary(containers);
+    renderContainerRows(containers);
+}
+
+function renderContainerSummary(containers) {
+    if (!containers) {
+        ['containerCount', 'containerCPU', 'containerMemory', 'containerNetwork'].forEach((id) => setText(id, '—'));
+        return;
+    }
+    const totals = containers.reduce((result, container) => {
+        result.cpu += Number(container.cpu_percent) || 0;
+        result.memory += Number(container.memory_used) || 0;
+        result.rx += Number(container.net_rx_bytes) || 0;
+        result.tx += Number(container.net_tx_bytes) || 0;
+        return result;
+    }, { cpu: 0, memory: 0, rx: 0, tx: 0 });
+    setText('containerCount', containers.length);
+    setText('containerCPU', `${totals.cpu.toFixed(1)}%`);
+    setText('containerMemory', formatBytes(totals.memory));
+    setText('containerNetwork', `${formatBytes(totals.rx)} / ${formatBytes(totals.tx)}`);
+}
+
+function renderContainerRows(containers, emptyMessage = 'No running containers returned.') {
+    const body = document.getElementById('containerTable');
+    if (!containers.length) {
+        body.replaceChildren(emptyTableRow(6, emptyMessage));
+        return;
+    }
+    const fragment = document.createDocumentFragment();
+    containers.forEach((container) => {
+        const row = document.createElement('tr');
+        const name = cell(container.name || container.id, container.image || '');
+        name.className = 'container-name';
+        row.append(
+            name,
+            cell(container.status || container.state || '—'),
+            cell(formatPercent(container.cpu_percent)),
+            cell(`${formatBytes(container.memory_used)} / ${formatBytes(container.memory_limit)} (${formatPercent(container.memory_percent)})`),
+            cell(`${formatBytes(container.net_rx_bytes)} / ${formatBytes(container.net_tx_bytes)}`),
+            cell(container.pids ?? '—')
+        );
         fragment.appendChild(row);
     });
     body.replaceChildren(fragment);

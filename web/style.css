@@ -95,18 +95,30 @@ main { display: flex; flex-direction: column; gap: 22px; padding: 24px 22px 44px
 .metric-head em { padding: 3px 5px; border: 1px solid #224635; border-radius: 2px; color: var(--green); font-family: var(--mono); font-size: 7px; font-style: normal; text-transform: uppercase; }
 .metric-card[data-state="warning"] .metric-head em { border-color: #5b4421; color: var(--amber); }
 .metric-card[data-state="critical"] .metric-head em { border-color: #5b292e; color: var(--red); }
+.metric-card[data-state="unavailable"] .metric-head em { border-color: var(--line-strong); color: var(--muted); }
 .metric-value { margin: 7px 0 9px; font-family: var(--mono); font-size: clamp(22px,2.2vw,30px); font-weight: 480; letter-spacing: -.06em; line-height: 1; }
 .metric-value-small { margin-top: 10px; font-size: clamp(15px,1.6vw,21px); letter-spacing: -.04em; }
 .metric-track { height: 2px; margin-top: auto; overflow: hidden; background: #202323; }
 .metric-track i { display: block; width: 0; height: 100%; background: var(--cyan); box-shadow: 0 0 9px rgba(22,217,229,.5); transition: width 400ms ease; }
 .metric-card[data-state="warning"] .metric-track i { background: var(--amber); }
 .metric-card[data-state="critical"] .metric-track i { background: var(--red); }
+.metric-card[data-state="unavailable"] .metric-track i { background: var(--muted); }
 .metric-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; color: #555b5b; font-family: var(--mono); font-size: 7px; }
 .metric-meta b { color: #777d7d; font-weight: 500; }
 .metric-live { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 5px; color: #484e4e; font-family: var(--mono); font-size: 7px; }
 .metric-live b { color: #676d6d; font-weight: 500; }
 
 .performance-grid, .analysis-grid { display: grid; grid-template-columns: minmax(0,2.05fr) minmax(270px,.75fr); gap: 12px; }
+.container-summary-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 12px; }
+.compact-stat { min-height: 88px; padding: 12px 13px; }
+.compact-stat > span, .compact-stat > small { display: block; color: var(--muted); font-family: var(--mono); font-size: 7px; text-transform: uppercase; }
+.compact-stat > strong { display: block; margin: 9px 0 4px; overflow: hidden; color: var(--text); font-family: var(--mono); font-size: 17px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.compact-stat:nth-child(2) > strong { color: var(--cyan); }
+.compact-stat:nth-child(3) > strong { color: var(--violet); }
+.compact-stat:nth-child(4) > strong { color: var(--green); }
+.container-panel .table-scroll { max-height: 360px; }
+.container-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.container-name { color: var(--text-soft); font-weight: 650; }
 .analysis-grid { grid-template-columns: minmax(0,1.65fr) minmax(310px,1fr); }
 .panel { overflow: hidden; }
 .panel-heading { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 13px; border-bottom: 1px solid var(--line); }
@@ -217,6 +229,7 @@ th:not(:first-child), td:not(:first-child) { text-align: right; }
     .metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .metric-card-primary, .metric-card-secondary { grid-column: auto; }
     .performance-grid, .analysis-grid { grid-template-columns: 1fr; }
+    .container-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .machine-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
     .machine-list > div:nth-last-child(2) { border-bottom: 0; }
     .series-controls .series-button:nth-last-child(-n+2) { display: none; }
@@ -259,6 +272,7 @@ th:not(:first-child), td:not(:first-child) { text-align: right; }
 @media (max-width: 460px) {
     .metric-grid { grid-template-columns: 1fr; }
     .metric-card, .metric-card-secondary { min-height: 108px; }
+    .container-summary-grid { grid-template-columns: 1fr; gap: 8px; }
     .page-title code { display: none; }
     .topbar-actions { margin-left: auto; }
     .chart-panel .panel-heading { min-height: 78px; align-items: flex-start; flex-direction: column; padding: 10px 12px; }

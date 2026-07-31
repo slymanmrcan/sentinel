@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/shirou/gopsutil/v3/host"
 	gnet "github.com/shirou/gopsutil/v3/net"
@@ -34,6 +35,11 @@ type PortInfo struct {
 	Name string `json:"name"`
 }
 
+type processSample struct {
+	at       time.Time
+	cpuTotal float64
+}
+
 func (c *Collector) SystemDetails() SystemDetails {
 	kernel := "Unknown"
 	if stat, err := host.Info(); err == nil {
@@ -42,7 +48,7 @@ func (c *Collector) SystemDetails() SystemDetails {
 	return SystemDetails{
 		KernelVersion:  kernel,
 		RebootRequired: c.rebootRequired(),
-		Processes:      processes(),
+		Processes:      c.processesNow(),
 		ListeningPorts: listeningPorts(),
 	}
 }
@@ -70,42 +76,67 @@ func (c *Collector) hostOS(fallback string) string {
 	return fallback
 }
 
-func (c *Collector) cpuTemperature() float64 {
+func (c *Collector) cpuTemperature() (float64, bool) {
 	bases := []string{"/sys/class/thermal", "/host/sys/class/thermal"}
 	if c.cfg.HostSys != "" {
 		bases = append([]string{c.cfg.HostSys + "/class/thermal"}, bases...)
 	}
 	for _, base := range bases {
-		entries, err := os.ReadDir(base)
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			if !strings.HasPrefix(entry.Name(), "thermal_zone") {
-				continue
-			}
-			data, err := os.ReadFile(fmt.Sprintf("%s/%s/temp", base, entry.Name()))
-			if err != nil {
-				continue
-			}
-			var milliDegrees float64
-			if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%f", &milliDegrees); err == nil {
-				value := milliDegrees / 1000
-				if value > 0 && value < 120 {
-					return value
-				}
-			}
+		if value, ok := temperatureFromThermalRoot(base); ok {
+			return value, true
 		}
 	}
 	if temperatures, err := host.SensorsTemperatures(); err == nil {
 		for _, temperature := range temperatures {
 			key := strings.ToLower(temperature.SensorKey)
 			if strings.Contains(key, "cpu") || strings.Contains(key, "core") {
-				return temperature.Temperature
+				if temperature.Temperature > 0 && temperature.Temperature < 120 {
+					return temperature.Temperature, true
+				}
 			}
 		}
 	}
-	return 0
+	return 0, false
+}
+
+func temperatureFromThermalRoot(root string) (float64, bool) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return 0, false
+	}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), "thermal_zone") {
+			continue
+		}
+		zone := fmt.Sprintf("%s/%s", root, entry.Name())
+		typeData, err := os.ReadFile(zone + "/type")
+		if err != nil || !isCPUThermalType(string(typeData)) {
+			continue
+		}
+		tempData, err := os.ReadFile(zone + "/temp")
+		if err != nil {
+			continue
+		}
+		var milliDegrees float64
+		if _, err := fmt.Sscanf(strings.TrimSpace(string(tempData)), "%f", &milliDegrees); err != nil {
+			continue
+		}
+		value := milliDegrees / 1000
+		if value > 0 && value < 120 {
+			return value, true
+		}
+	}
+	return 0, false
+}
+
+func isCPUThermalType(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, token := range []string{"cpu", "core", "package", "x86_pkg", "k10temp", "tctl", "soc_thermal"} {
+		if strings.Contains(value, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Collector) rebootRequired() bool {
@@ -113,11 +144,16 @@ func (c *Collector) rebootRequired() bool {
 	return err == nil
 }
 
-func processes() []ProcessInfo {
+func (c *Collector) processesNow() []ProcessInfo {
+	c.processMu.Lock()
+	defer c.processMu.Unlock()
+
 	list, err := process.Processes()
 	if err != nil {
 		return []ProcessInfo{}
 	}
+	now := time.Now()
+	current := make(map[int32]processSample, len(list))
 	result := make([]ProcessInfo, 0, len(list))
 	for _, item := range list {
 		name, err := item.Name()
@@ -125,7 +161,14 @@ func processes() []ProcessInfo {
 			continue
 		}
 		memory, _ := item.MemoryPercent()
-		cpuPercent, _ := item.CPUPercent()
+		cpuTimes, timeErr := item.Times()
+		cpuPercent := float64(0)
+		if timeErr == nil {
+			current[item.Pid] = processSample{at: now, cpuTotal: cpuTimes.Total()}
+			if previous, ok := c.processes[item.Pid]; ok {
+				cpuPercent = processCPUPercent(cpuTimes.Total(), previous.cpuTotal, now.Sub(previous.at).Seconds())
+			}
+		}
 		command, _ := item.Cmdline()
 		if len(command) > 120 {
 			command = command[:120] + "…"
@@ -135,11 +178,19 @@ func processes() []ProcessInfo {
 			Memory: float64(memory), Command: command,
 		})
 	}
+	c.processes = current
 	sort.Slice(result, func(i, j int) bool { return result[i].Memory > result[j].Memory })
 	if len(result) > 15 {
 		result = result[:15]
 	}
 	return result
+}
+
+func processCPUPercent(current, previous, elapsedSeconds float64) float64 {
+	if current < previous || elapsedSeconds <= 0 {
+		return 0
+	}
+	return (current - previous) / elapsedSeconds * 100
 }
 
 func listeningPorts() []PortInfo {

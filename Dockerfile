@@ -27,4 +27,6 @@ ENV DB_PATH=/data/metrics.db
 # Persistent directory volume
 VOLUME /data
 
+HEALTHCHECK --interval=30s --timeout=4s --start-period=15s --retries=3 CMD ["/app/sentinel", "healthcheck"]
+
 CMD ["/app/sentinel"]

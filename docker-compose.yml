@@ -32,6 +32,10 @@ services:
       - AUTH_SESSION_TTL
       - AUTH_ALLOWED_ORIGINS
       - TRUST_PROXY_HEADERS
+      - NETWORK_INTERFACES
+      - CONTAINER_METRICS_ENABLED
+      - CONTAINER_API_URL
+      - DOCKER_SOCKET
     volumes:
       - ./data:/data
       - /proc:/host/proc:ro

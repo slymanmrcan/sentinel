@@ -27,6 +27,11 @@ type Collector struct {
 
 	throughputMu sync.Mutex
 	lastSample   ioSample
+	processMu    sync.Mutex
+	processes    map[int32]processSample
+	containerMu  sync.RWMutex
+	containers   ContainerSnapshot
+	containerSrc containerSource
 	lastAnomaly  map[string]time.Time
 	lastAlert    map[string]time.Time
 }
@@ -39,9 +44,15 @@ type ioSample struct {
 }
 
 func New(dataStore *store.Store, cfg config.Config) *Collector {
+	containerSrc, containerEnabled := newContainerSource(cfg)
 	return &Collector{
-		store:       dataStore,
-		cfg:         cfg,
+		store:        dataStore,
+		cfg:          cfg,
+		processes:    make(map[int32]processSample),
+		containerSrc: containerSrc,
+		containers: ContainerSnapshot{
+			Enabled: containerEnabled, Message: "Container metrics are disabled", Containers: []ContainerMetric{},
+		},
 		lastAnomaly: make(map[string]time.Time),
 		lastAlert:   make(map[string]time.Time),
 	}
@@ -49,8 +60,11 @@ func New(dataStore *store.Store, cfg config.Config) *Collector {
 
 func (c *Collector) Start(ctx context.Context) {
 	c.collect(ctx)
+	c.collectContainers(ctx)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
+	containerTicker := time.NewTicker(15 * time.Second)
+	defer containerTicker.Stop()
 	pruneTicker := time.NewTicker(time.Hour)
 	defer pruneTicker.Stop()
 
@@ -60,12 +74,46 @@ func (c *Collector) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 			c.collect(ctx)
+		case <-containerTicker.C:
+			c.collectContainers(ctx)
 		case <-pruneTicker.C:
 			if err := c.store.Prune(ctx); err != nil {
 				log.Printf("telemetry prune failed: %v", err)
 			}
 		}
 	}
+}
+
+func (c *Collector) Containers() ContainerSnapshot {
+	c.containerMu.RLock()
+	defer c.containerMu.RUnlock()
+	snapshot := c.containers
+	snapshot.Containers = make([]ContainerMetric, len(c.containers.Containers))
+	copy(snapshot.Containers, c.containers.Containers)
+	return snapshot
+}
+
+func (c *Collector) collectContainers(ctx context.Context) {
+	if c.containerSrc == nil {
+		return
+	}
+	collectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	containers, err := c.containerSrc.Collect(collectCtx)
+	collectedAt := time.Now()
+	snapshot := ContainerSnapshot{
+		Enabled: true, Available: err == nil, CollectedAt: &collectedAt, Containers: containers,
+	}
+	if containers == nil {
+		snapshot.Containers = []ContainerMetric{}
+	}
+	if err != nil {
+		snapshot.Message = "Docker metrics are currently unavailable"
+		log.Printf("container metric collection failed: %v", err)
+	}
+	c.containerMu.Lock()
+	c.containers = snapshot
+	c.containerMu.Unlock()
 }
 
 func (c *Collector) Current() store.Metric {
@@ -80,6 +128,10 @@ func (c *Collector) collect(ctx context.Context) {
 	c.current = metric
 	c.mu.Unlock()
 
+	if hasUnavailable(metric.Unavailable, "cpu", "memory", "disk", "swap", "load") {
+		log.Printf("metric history sample skipped because a baseline field is unavailable: %s", strings.Join(metric.Unavailable, ","))
+		return
+	}
 	if err := c.store.InsertMetric(ctx, metric); err != nil {
 		log.Printf("metric insert failed: %v", err)
 		return
@@ -89,7 +141,12 @@ func (c *Collector) collect(ctx context.Context) {
 }
 
 func (c *Collector) snapshot() store.Metric {
-	cpuPercent := firstFloat(cpu.Percent(0, false))
+	unavailable := make([]string, 0)
+	cpuValues, cpuErr := cpu.Percent(0, false)
+	cpuPercent := firstFloat(cpuValues)
+	if cpuErr != nil || len(cpuValues) == 0 {
+		unavailable = append(unavailable, "cpu")
+	}
 	cpuCores, _ := cpu.Counts(true)
 	cpuModel := "Unknown CPU"
 	if info, err := cpu.Info(); err == nil && len(info) > 0 {
@@ -98,14 +155,18 @@ func (c *Collector) snapshot() store.Metric {
 
 	var ramPercent float64
 	var ramUsed, ramTotal uint64
-	if stat, _ := mem.VirtualMemory(); stat != nil {
+	if stat, err := mem.VirtualMemory(); err == nil && stat != nil {
 		ramPercent, ramUsed, ramTotal = stat.UsedPercent, stat.Used, stat.Total
+	} else {
+		unavailable = append(unavailable, "memory")
 	}
 
 	var swapPercent float64
 	var swapUsed, swapTotal uint64
-	if stat, _ := mem.SwapMemory(); stat != nil {
+	if stat, err := mem.SwapMemory(); err == nil && stat != nil {
 		swapPercent, swapUsed, swapTotal = stat.UsedPercent, stat.Used, stat.Total
+	} else {
+		unavailable = append(unavailable, "swap")
 	}
 
 	diskPath := c.cfg.HostRoot
@@ -114,31 +175,42 @@ func (c *Collector) snapshot() store.Metric {
 	}
 	var diskPercent float64
 	var diskUsed, diskTotal uint64
-	if stat, _ := disk.Usage(diskPath); stat != nil {
+	if stat, err := disk.Usage(diskPath); err == nil && stat != nil {
 		diskPercent, diskUsed, diskTotal = stat.UsedPercent, stat.Used, stat.Total
+	} else {
+		unavailable = append(unavailable, "disk")
 	}
 
 	hostName, osName := "sentinel", "Unknown OS"
 	var uptime, processes uint64
-	if stat, _ := host.Info(); stat != nil {
+	if stat, err := host.Info(); err == nil && stat != nil {
 		hostName = stat.Hostname
 		osName = strings.TrimSpace(stat.OS + " " + stat.Platform)
 		uptime, processes = stat.Uptime, stat.Procs
+	} else {
+		unavailable = append(unavailable, "host")
 	}
 	osName = c.hostOS(osName)
 
 	var load1, load5, load15 float64
-	if stat, _ := load.Avg(); stat != nil {
+	if stat, err := load.Avg(); err == nil && stat != nil {
 		load1, load5, load15 = stat.Load1, stat.Load5, stat.Load15
+	} else {
+		unavailable = append(unavailable, "load")
 	}
-	netRxBps, netTxBps, netRxTotal, netTxTotal, diskReadBps, diskWriteBps := c.sampleThroughput()
+	netRxBps, netTxBps, netRxTotal, netTxTotal, diskReadBps, diskWriteBps, throughputUnavailable := c.sampleThroughput()
+	unavailable = append(unavailable, throughputUnavailable...)
+	cpuTemp, tempAvailable := c.cpuTemperature()
+	if !tempAvailable {
+		unavailable = append(unavailable, "cpu_temp")
+	}
 
 	return store.Metric{
 		Timestamp:    time.Now(),
 		CPUPercent:   cpuPercent,
 		CPUCores:     cpuCores,
 		CPUModel:     cpuModel,
-		CPUTemp:      c.cpuTemperature(),
+		CPUTemp:      cpuTemp,
 		Load1:        load1,
 		Load5:        load5,
 		Load15:       load15,
@@ -161,26 +233,36 @@ func (c *Collector) snapshot() store.Metric {
 		HostName:     hostName,
 		Uptime:       uptime,
 		Processes:    processes,
+		Unavailable:  unavailable,
 	}
 }
 
-func firstFloat(values []float64, _ error) float64 {
+func firstFloat(values []float64) float64 {
 	if len(values) == 0 {
 		return 0
 	}
 	return values[0]
 }
 
-func (c *Collector) sampleThroughput() (float64, float64, uint64, uint64, float64, float64) {
+func (c *Collector) sampleThroughput() (float64, float64, uint64, uint64, float64, float64, []string) {
 	var netRx, netTx, diskRead, diskWrite uint64
-	if counters, err := gnet.IOCounters(false); err == nil && len(counters) > 0 {
-		netRx, netTx = counters[0].BytesRecv, counters[0].BytesSent
+	unavailable := make([]string, 0, 2)
+	if counters, err := gnet.IOCounters(len(c.cfg.NetworkInterfaces) > 0); err == nil && len(counters) > 0 {
+		var found bool
+		netRx, netTx, found = selectedNetworkCounters(counters, c.cfg.NetworkInterfaces)
+		if !found {
+			unavailable = append(unavailable, "network")
+		}
+	} else {
+		unavailable = append(unavailable, "network")
 	}
-	if counters, err := disk.IOCounters(); err == nil {
+	if counters, err := disk.IOCounters(); err == nil && len(counters) > 0 {
 		for _, counter := range counters {
 			diskRead += counter.ReadBytes
 			diskWrite += counter.WriteBytes
 		}
+	} else {
+		unavailable = append(unavailable, "disk_io")
 	}
 
 	c.throughputMu.Lock()
@@ -190,18 +272,55 @@ func (c *Collector) sampleThroughput() (float64, float64, uint64, uint64, float6
 	previous := c.lastSample
 	c.lastSample = current
 	if previous.at.IsZero() {
-		return 0, 0, netRx, netTx, 0, 0
+		return 0, 0, netRx, netTx, 0, 0, unavailable
 	}
 	elapsed := now.Sub(previous.at).Seconds()
 	if elapsed <= 0 {
-		return 0, 0, netRx, netTx, 0, 0
+		return 0, 0, netRx, netTx, 0, 0, unavailable
 	}
 	return rate(netRx, previous.netRx, elapsed),
 		rate(netTx, previous.netTx, elapsed),
 		netRx,
 		netTx,
 		rate(diskRead, previous.diskRead, elapsed),
-		rate(diskWrite, previous.diskWrite, elapsed)
+		rate(diskWrite, previous.diskWrite, elapsed),
+		unavailable
+}
+
+func selectedNetworkCounters(counters []gnet.IOCountersStat, selected []string) (uint64, uint64, bool) {
+	if len(selected) == 0 {
+		if len(counters) == 0 {
+			return 0, 0, false
+		}
+		return counters[0].BytesRecv, counters[0].BytesSent, true
+	}
+	wanted := make(map[string]bool, len(selected))
+	for _, name := range selected {
+		wanted[name] = true
+	}
+	var received, sent uint64
+	found := false
+	for _, counter := range counters {
+		if wanted[counter.Name] {
+			found = true
+			received += counter.BytesRecv
+			sent += counter.BytesSent
+		}
+	}
+	return received, sent, found
+}
+
+func hasUnavailable(unavailable []string, names ...string) bool {
+	lookup := make(map[string]bool, len(unavailable))
+	for _, name := range unavailable {
+		lookup[name] = true
+	}
+	for _, name := range names {
+		if lookup[name] {
+			return true
+		}
+	}
+	return false
 }
 
 func rate(current, previous uint64, seconds float64) float64 {

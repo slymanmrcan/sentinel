@@ -6,6 +6,7 @@ Kompakt, tek binary olarak dağıtılan host telemetry ve anomaly detection pane
 - `cmd/api` ve `internal/*` paket yapısı
 - HttpOnly oturum cookie’si, CSRF koruması ve brute-force kilidi
 - CPU, bellek, swap, disk, load, network ve disk I/O telemetrisi
+- Opsiyonel container bazlı CPU, working-set RAM, network ve PID telemetrisi
 - Rolling baseline, z-score anomaly detection ve threshold alert’leri
 - Gömülü, responsive web arayüzü
 
@@ -39,6 +40,7 @@ flowchart LR
     Auth --> DB[("DuckDB")]
     Monitor --> DB
     Monitor --> Host["/proc · /sys · host root"]
+    Monitor -. opt-in .-> Docker["Docker Engine API"]
 ```
 
 ## İlk çalıştırma
@@ -97,6 +99,10 @@ reverse proxy arkasında tutun.
 | `TRUST_PROXY_HEADERS` | `false` | Yalnız güvenilir proxy arkasında `true` |
 | `HOST_ROOT` | boş | Host root mount yolu |
 | `HOST_SYS` | boş | Host sysfs mount yolu |
+| `NETWORK_INTERFACES` | boş | Sayaçlara dahil edilecek virgülle ayrılmış arayüzler |
+| `CONTAINER_METRICS_ENABLED` | `false` | Docker container telemetrisini açar |
+| `CONTAINER_API_URL` | boş | Korunan Docker API/proxy adresi |
+| `DOCKER_SOCKET` | `/var/run/docker.sock` | API URL yoksa kullanılan Unix socket |
 
 Uygulama başlangıçta çalışma dizinindeki `.env` dosyasını yükler; gerçek ortam
 değişkenleri `.env` değerlerinden önceliklidir. `.env` Git tarafından yok
@@ -133,12 +139,31 @@ erişilemiyor ve tüm istekler güvenilir proxy’den geliyorsa kullanılmalıd�
 | `GET` | `/api/alerts/events` | Evet | Alert geçmişi |
 | `GET/POST/DELETE` | `/api/logs` | Evet | Event akışı |
 | `GET` | `/api/system/details` | Evet | Process, port, kernel |
+| `GET` | `/api/containers` | Evet | Opsiyonel container snapshot'ı |
 | `GET` | `/api/export/*.csv` | Evet | CSV export |
 
 Network kartı anlık inbound/outbound hızını ve host açılışından beri biriken
 inbound, outbound ve toplam byte sayaçlarını gösterir. Bu host seviyesinde tüm
 ağ arayüzlerinin toplamıdır; bridge, veth ve loopback trafiğini içerebileceği
 için internet sağlayıcısı fatura ölçümü olarak değerlendirilmemelidir.
+`NETWORK_INTERFACES=eth0,wlan0` gibi açık bir liste verilerek hangi sayaçların
+dahil olacağı sınırlandırılabilir.
+
+## Container telemetrisi
+
+Container görünümü aynı dashboard içinde ayrı bir bölümdür ve varsayılan olarak
+kapalıdır. En güvenli tercih, sadece gerekli read-only route'ları açan,
+kimlik doğrulamalı ve ağ ile sınırlandırılmış bir Docker API proxy'sidir:
+
+```env
+CONTAINER_METRICS_ENABLED=true
+CONTAINER_API_URL=http://docker-metrics-proxy:2375
+```
+
+Doğrudan `/var/run/docker.sock` bağlantısı da desteklenir ancak Docker daemon
+erişimi pratikte host üzerinde çok yüksek yetki verir. Bu yüzden varsayılan
+Compose dosyası socket mount etmez. Kurulum seçenekleri ve metrik formülleri
+için [container metrics rehberine](docs/container-metrics.md) bakın.
 
 Cookie ve CSRF ile örnek:
 
@@ -186,6 +211,10 @@ make build
 docker compose config --quiet
 ```
 
+CI her push/PR için format, race detector, coverage, vet, Go build ve Docker
+image build kontrollerini çalıştırır. Gerçek Linux host ve Docker karşılaştırma
+adımları [Linux validation checklist](docs/linux-validation.md) içinde yer alır.
+
 `make vulncheck` güncel vulnerability verisi için ağ erişimi ister.
 
 ## Veri ve retention
@@ -209,7 +238,8 @@ alınmaz.
 Sentinel is a compact, single-binary host telemetry console backed by DuckDB.
 It collects CPU, memory, swap, disk, load, network, and disk I/O metrics; builds a
 rolling statistical baseline; detects z-score anomalies; and evaluates
-threshold alert rules.
+threshold alert rules. Optional Docker Engine telemetry adds per-container CPU,
+memory working set, cumulative network counters, and PID counts.
 
 The Go code is split into:
 
@@ -275,6 +305,12 @@ Compose exposes port `8000` only on the external `infra_net`; it does not
 publish a host port. The container uses a read-only root filesystem, dropped
 capabilities, no-new-privileges, and read-only host inspection mounts.
 
+Container telemetry is disabled by default. Prefer a protected, read-only
+Docker API proxy. Directly mounting `docker.sock` grants highly privileged
+daemon access even if the mount itself is marked read-only, so the default
+Compose file deliberately does not mount it. See
+[container metrics](docs/container-metrics.md).
+
 ## Validation
 
 ```bash
@@ -283,6 +319,10 @@ make vet
 make build
 docker compose config --quiet
 ```
+
+CI also runs the race detector and builds the Docker image. Use the
+[Linux validation checklist](docs/linux-validation.md) for real host and cgroup
+verification.
 
 Metrics, anomalies, and alerts are retained for 30 days; system events for 7
 days. Database files, `.env`, WAL files, and binaries are ignored by Git.
@@ -293,3 +333,7 @@ are host-wide interface counters and can include bridge, veth, and loopback
 traffic, so they should not be treated as ISP billing measurements.
 
 </details>
+
+## License
+
+Sentinel is available under the [MIT License](LICENSE).

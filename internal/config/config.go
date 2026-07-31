@@ -23,6 +23,10 @@ type Config struct {
 	AllowedOrigins    []string
 	HostRoot          string
 	HostSys           string
+	NetworkInterfaces []string
+	ContainerMetrics  bool
+	ContainerAPIURL   string
+	DockerSocket      string
 }
 
 func Load() (Config, error) {
@@ -37,6 +41,14 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	trustProxyHeaders, err := envBool("TRUST_PROXY_HEADERS", false)
+	if err != nil {
+		return Config{}, err
+	}
+	containerMetrics, err := envBool("CONTAINER_METRICS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	containerAPIURL, err := parseContainerAPIURL(os.Getenv("CONTAINER_API_URL"))
 	if err != nil {
 		return Config{}, err
 	}
@@ -66,6 +78,10 @@ func Load() (Config, error) {
 		AllowedOrigins:    allowedOrigins,
 		HostRoot:          strings.TrimSpace(os.Getenv("HOST_ROOT")),
 		HostSys:           strings.TrimSpace(os.Getenv("HOST_SYS")),
+		NetworkInterfaces: splitCSV(os.Getenv("NETWORK_INTERFACES")),
+		ContainerMetrics:  containerMetrics,
+		ContainerAPIURL:   containerAPIURL,
+		DockerSocket:      envOr("DOCKER_SOCKET", "/var/run/docker.sock"),
 	}, nil
 }
 
@@ -114,4 +130,31 @@ func parseOrigins(raw string) ([]string, error) {
 		origins = append(origins, strings.ToLower(parsed.Scheme+"://"+parsed.Host))
 	}
 	return origins, nil
+}
+
+func parseContainerAPIURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("CONTAINER_API_URL must be an http(s) URL without credentials, query, or fragment")
+	}
+	return strings.TrimRight(raw, "/"), nil
+}
+
+func splitCSV(raw string) []string {
+	result := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		result = append(result, item)
+	}
+	return result
 }

@@ -16,6 +16,10 @@ func TestLoadDefaultsAndLegacyAuthFallback(t *testing.T) {
 	t.Setenv("AUTH_COOKIE_SECURE", "true")
 	t.Setenv("AUTH_SESSION_TTL", "2h")
 	t.Setenv("AUTH_ALLOWED_ORIGINS", "https://monitor.example, http://localhost:8000/")
+	t.Setenv("NETWORK_INTERFACES", "eth0, tailscale0, eth0")
+	t.Setenv("CONTAINER_METRICS_ENABLED", "true")
+	t.Setenv("CONTAINER_API_URL", "http://docker-proxy:2375/")
+	t.Setenv("DOCKER_SOCKET", "/run/user/1000/docker.sock")
 
 	cfg, err := Load()
 	if err != nil {
@@ -35,6 +39,12 @@ func TestLoadDefaultsAndLegacyAuthFallback(t *testing.T) {
 		cfg.AllowedOrigins[1] != "http://localhost:8000" {
 		t.Fatalf("allowed origins were not normalized: %#v", cfg.AllowedOrigins)
 	}
+	if len(cfg.NetworkInterfaces) != 2 || cfg.NetworkInterfaces[0] != "eth0" || cfg.NetworkInterfaces[1] != "tailscale0" {
+		t.Fatalf("network interfaces were not normalized: %#v", cfg.NetworkInterfaces)
+	}
+	if !cfg.ContainerMetrics || cfg.ContainerAPIURL != "http://docker-proxy:2375" || cfg.DockerSocket != "/run/user/1000/docker.sock" {
+		t.Fatalf("container settings were not loaded: %#v", cfg)
+	}
 }
 
 func TestLoadRejectsUnsafeSessionTTL(t *testing.T) {
@@ -48,5 +58,12 @@ func TestLoadRejectsAllowedOriginWithPath(t *testing.T) {
 	t.Setenv("AUTH_ALLOWED_ORIGINS", "https://monitor.example/admin")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want invalid origin error")
+	}
+}
+
+func TestLoadRejectsUnsafeContainerAPIURL(t *testing.T) {
+	t.Setenv("CONTAINER_API_URL", "http://user:pass@docker.example:2375")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want invalid container API URL error")
 	}
 }

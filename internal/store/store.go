@@ -58,6 +58,7 @@ type Metric struct {
 	HostName     string    `json:"host_name,omitempty"`
 	Uptime       uint64    `json:"uptime,omitempty"`
 	Processes    uint64    `json:"processes,omitempty"`
+	Unavailable  []string  `json:"unavailable,omitempty"`
 }
 
 type LogEntry struct {
