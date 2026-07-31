@@ -25,6 +25,7 @@ type Config struct {
 	HostSys           string
 	NetworkInterfaces []string
 	ContainerMetrics  bool
+	ContainerInterval time.Duration
 	ContainerAPIURL   string
 	DockerSocket      string
 }
@@ -49,6 +50,10 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	containerAPIURL, err := parseContainerAPIURL(os.Getenv("CONTAINER_API_URL"))
+	if err != nil {
+		return Config{}, err
+	}
+	containerInterval, err := parseContainerInterval(os.Getenv("CONTAINER_COLLECTION_INTERVAL"))
 	if err != nil {
 		return Config{}, err
 	}
@@ -80,9 +85,26 @@ func Load() (Config, error) {
 		HostSys:           strings.TrimSpace(os.Getenv("HOST_SYS")),
 		NetworkInterfaces: splitCSV(os.Getenv("NETWORK_INTERFACES")),
 		ContainerMetrics:  containerMetrics,
+		ContainerInterval: containerInterval,
 		ContainerAPIURL:   containerAPIURL,
 		DockerSocket:      envOr("DOCKER_SOCKET", "/var/run/docker.sock"),
 	}, nil
+}
+
+func parseContainerInterval(raw string) (time.Duration, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 15 * time.Second, nil
+	}
+	interval, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("CONTAINER_COLLECTION_INTERVAL must be one of 15s, 30s, 45s, 1m, or 2m")
+	}
+	switch interval {
+	case 15 * time.Second, 30 * time.Second, 45 * time.Second, time.Minute, 2 * time.Minute:
+		return interval, nil
+	default:
+		return 0, fmt.Errorf("CONTAINER_COLLECTION_INTERVAL must be one of 15s, 30s, 45s, 1m, or 2m")
+	}
 }
 
 func envOr(key, fallback string) string {

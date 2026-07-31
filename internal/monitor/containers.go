@@ -19,12 +19,26 @@ import (
 
 const maxContainerResponseBytes = 8 << 20
 
+const containerIntervalSettingKey = "container_interval_seconds"
+
+var ErrInvalidContainerInterval = errors.New("container interval must be 15, 30, 45, 60, or 120 seconds")
+
 type ContainerSnapshot struct {
 	Enabled     bool              `json:"enabled"`
 	Available   bool              `json:"available"`
 	Message     string            `json:"message,omitempty"`
 	CollectedAt *time.Time        `json:"collected_at,omitempty"`
+	IntervalSec int               `json:"interval_seconds"`
 	Containers  []ContainerMetric `json:"containers"`
+}
+
+func validContainerInterval(seconds int) bool {
+	switch seconds {
+	case 15, 30, 45, 60, 120:
+		return true
+	default:
+		return false
+	}
 }
 
 type ContainerMetric struct {
@@ -47,8 +61,10 @@ type containerSource interface {
 }
 
 type dockerContainerSource struct {
-	baseURL string
-	client  *http.Client
+	baseURL    string
+	client     *http.Client
+	previousMu sync.Mutex
+	previous   map[string]dockerCPUStats
 }
 
 type dockerContainer struct {
@@ -117,7 +133,7 @@ func (s *dockerContainerSource) Collect(ctx context.Context) ([]ContainerMetric,
 	if len(containers) > 64 {
 		containers = containers[:64]
 	}
-	result := make([]ContainerMetric, len(containers))
+	statsByIndex := make([]dockerStats, len(containers))
 	errorsByIndex := make([]error, len(containers))
 	semaphore := make(chan struct{}, 8)
 	var waitGroup sync.WaitGroup
@@ -128,18 +144,33 @@ func (s *dockerContainerSource) Collect(ctx context.Context) ([]ContainerMetric,
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 			var stats dockerStats
-			path := "/containers/" + url.PathEscape(container.ID) + "/stats?stream=false"
+			path := "/containers/" + url.PathEscape(container.ID) + "/stats?stream=false&one-shot=true"
 			if err := s.getJSON(ctx, path, &stats); err != nil {
 				errorsByIndex[index] = fmt.Errorf("stats for container %s: %w", shortContainerID(container.ID), err)
 				return
 			}
-			result[index] = containerMetricFromDocker(container, stats)
+			statsByIndex[index] = stats
 		}()
 	}
 	waitGroup.Wait()
 	if err := errors.Join(errorsByIndex...); err != nil {
 		return nil, err
 	}
+	result := make([]ContainerMetric, len(containers))
+	s.previousMu.Lock()
+	nextPrevious := make(map[string]dockerCPUStats, len(containers))
+	for index, container := range containers {
+		stats := statsByIndex[index]
+		previous, ok := s.previous[container.ID]
+		if !ok {
+			previous = stats.CPUStats
+		}
+		stats.PreCPUStats = previous
+		result[index] = containerMetricFromDocker(container, stats)
+		nextPrevious[container.ID] = stats.CPUStats
+	}
+	s.previous = nextPrevious
+	s.previousMu.Unlock()
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].CPUPercent == result[j].CPUPercent {
 			return result[i].Name < result[j].Name

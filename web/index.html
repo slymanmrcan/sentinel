@@ -54,6 +54,16 @@
                     <code id="agentName">agent · waiting</code>
                 </div>
                 <div class="topbar-actions">
+                    <label class="interval-control" for="containerInterval" title="Docker container collection interval">
+                        <span>Containers</span>
+                        <select id="containerInterval" aria-label="Container collection interval">
+                            <option value="15">15s</option>
+                            <option value="30">30s</option>
+                            <option value="45">45s</option>
+                            <option value="60">1m</option>
+                            <option value="120">2m</option>
+                        </select>
+                    </label>
                     <a class="export-button" href="/api/export/metrics.csv" download><span aria-hidden="true">⇩</span> Export</a>
                     <span class="updated-at" id="updatedAt">waiting for data</span>
                 </div>

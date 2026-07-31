@@ -4,7 +4,9 @@ const state = {
     chart: null,
     chartRange: '1h',
     latestMetric: null,
-    logSearchTimer: null
+    logSearchTimer: null,
+    containerRefreshTimer: null,
+    containerIntervalSeconds: 15
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -24,7 +26,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.setInterval(loadRealtime, 2000);
     window.setInterval(loadSystemDetails, 15000);
-    window.setInterval(loadContainers, 15000);
     window.setInterval(loadAnalysis, 30000);
     window.setInterval(loadAlerts, 30000);
     window.setInterval(loadEvents, 10000);
@@ -62,6 +63,7 @@ function bindUI() {
         state.logSearchTimer = window.setTimeout(loadEvents, 250);
     });
     document.getElementById('eventLevel').addEventListener('change', loadEvents);
+    document.getElementById('containerInterval').addEventListener('change', changeContainerInterval);
     document.getElementById('clearEventsButton').addEventListener('click', clearEvents);
     document.getElementById('signOutButton').addEventListener('click', signOut);
     document.getElementById('accountButton').addEventListener('click', () => {
@@ -420,17 +422,56 @@ async function loadContainers() {
     try {
         const response = await apiFetch('/api/containers');
         if (!response.ok) throw new Error(`Containers returned ${response.status}`);
-        renderContainers(await response.json());
+        acceptContainerSnapshot(await response.json());
     } catch (error) {
         console.error('Unable to load container metrics:', error);
         setText('containerStatus', 'Container telemetry unavailable');
         setText('containerCollectionState', 'collection failed');
         renderContainerRows([]);
+        scheduleContainerLoad(state.containerIntervalSeconds);
+    }
+}
+
+function acceptContainerSnapshot(snapshot) {
+    const seconds = [15, 30, 45, 60, 120].includes(Number(snapshot.interval_seconds))
+        ? Number(snapshot.interval_seconds)
+        : 15;
+    state.containerIntervalSeconds = seconds;
+    const control = document.getElementById('containerInterval');
+    control.value = String(seconds);
+    control.disabled = !snapshot.enabled;
+    renderContainers(snapshot);
+    scheduleContainerLoad(seconds);
+}
+
+function scheduleContainerLoad(seconds) {
+    window.clearTimeout(state.containerRefreshTimer);
+    state.containerRefreshTimer = window.setTimeout(loadContainers, Math.max(15, Number(seconds) || 15) * 1000);
+}
+
+async function changeContainerInterval(event) {
+    const control = event.currentTarget;
+    const previous = state.containerIntervalSeconds;
+    const seconds = Number(control.value);
+    control.disabled = true;
+    try {
+        const response = await apiFetch('/api/containers/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ interval_seconds: seconds })
+        });
+        if (!response.ok) throw new Error(`Container settings returned ${response.status}`);
+        acceptContainerSnapshot(await response.json());
+    } catch (error) {
+        console.error('Unable to update container interval:', error);
+        control.value = String(previous);
+        control.disabled = false;
     }
 }
 
 function renderContainers(snapshot) {
     const containers = snapshot.containers || [];
+    const interval = formatContainerInterval(snapshot.interval_seconds);
     if (!snapshot.enabled) {
         setText('containerCollectionState', 'optional Docker telemetry · disabled');
         setText('containerStatus', snapshot.message || 'Enable container metrics in configuration');
@@ -439,17 +480,23 @@ function renderContainers(snapshot) {
         return;
     }
     if (!snapshot.available) {
-        setText('containerCollectionState', 'optional Docker telemetry · unavailable');
+        setText('containerCollectionState', `Docker telemetry · ${interval} collection · unavailable`);
         setText('containerStatus', snapshot.message || 'Docker metrics are unavailable');
         renderContainerSummary(null);
         renderContainerRows([], 'Docker metrics are enabled but unavailable. Check the configured API or socket access.');
         return;
     }
     const updated = snapshot.collected_at ? new Date(snapshot.collected_at).toLocaleTimeString() : 'just now';
-    setText('containerCollectionState', `Docker telemetry · updated ${updated}`);
+    setText('containerCollectionState', `Docker telemetry · ${interval} collection · updated ${updated}`);
     setText('containerStatus', containers.length ? `${containers.length} running` : 'No running containers');
     renderContainerSummary(containers);
     renderContainerRows(containers);
+}
+
+function formatContainerInterval(seconds) {
+    const value = Number(seconds) || 15;
+    if (value >= 60) return `${value / 60}m`;
+    return `${value}s`;
 }
 
 function renderContainerSummary(containers) {

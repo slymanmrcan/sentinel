@@ -101,6 +101,7 @@ reverse proxy arkasında tutun.
 | `HOST_SYS` | boş | Host sysfs mount yolu |
 | `NETWORK_INTERFACES` | boş | Sayaçlara dahil edilecek virgülle ayrılmış arayüzler |
 | `CONTAINER_METRICS_ENABLED` | `false` | Docker container telemetrisini açar |
+| `CONTAINER_COLLECTION_INTERVAL` | `15s` | İlk container ölçüm aralığı: `15s`, `30s`, `45s`, `1m`, `2m` |
 | `CONTAINER_API_URL` | boş | Korunan Docker API/proxy adresi |
 | `DOCKER_SOCKET` | `/var/run/docker.sock` | API URL yoksa kullanılan Unix socket |
 
@@ -140,6 +141,7 @@ erişilemiyor ve tüm istekler güvenilir proxy’den geliyorsa kullanılmalıd�
 | `GET/POST/DELETE` | `/api/logs` | Evet | Event akışı |
 | `GET` | `/api/system/details` | Evet | Process, port, kernel |
 | `GET` | `/api/containers` | Evet | Opsiyonel container snapshot'ı |
+| `PUT` | `/api/containers/settings` | Evet + CSRF | Container ölçüm aralığını değiştirir |
 | `GET` | `/api/export/*.csv` | Evet | CSV export |
 
 Network kartı anlık inbound/outbound hızını ve host açılışından beri biriken
@@ -174,6 +176,11 @@ docker compose -f docker-compose.yml -f docker-compose.containers.yml up -d --bu
 
 Bu komut container telemetrisini açar ve Linux Docker socket'ini bağlar.
 Varsayılan `docker compose up` socket erişimi vermez.
+
+Header'daki interval seçici `15s`, `30s`, `45s`, `1m` ve `2m` seçeneklerini
+gerçek collector timer'ına uygular. Seçim DuckDB'ye kaydedilir ve restart sonrası
+korunur; `.env` değeri yalnız henüz kayıtlı bir UI seçimi yokken başlangıç
+varsayılanıdır.
 
 Cookie ve CSRF ile örnek:
 
@@ -326,6 +333,9 @@ For an explicitly trusted single-host installation, use the opt-in override:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.containers.yml up -d --build
 ```
+
+The header interval selector changes the actual Docker collection timer and
+persists the selected `15s`, `30s`, `45s`, `1m`, or `2m` value in DuckDB.
 
 ## Validation
 

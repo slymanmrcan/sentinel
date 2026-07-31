@@ -35,6 +35,10 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, fmt.Errorf("initialize authentication: %w", err)
 	}
 	collector := monitor.New(dataStore, cfg)
+	if err := collector.LoadSettings(ctx); err != nil {
+		_ = dataStore.Close()
+		return nil, fmt.Errorf("load monitor settings: %w", err)
+	}
 	api := httpapi.New(cfg, dataStore, authService, collector)
 
 	return &App{

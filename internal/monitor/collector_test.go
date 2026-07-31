@@ -1,9 +1,14 @@
 package monitor
 
 import (
+	"context"
+	"path/filepath"
 	"testing"
+	"time"
 
 	gnet "github.com/shirou/gopsutil/v3/net"
+	"github.com/slymanmrcan/sentinel/internal/config"
+	"github.com/slymanmrcan/sentinel/internal/store"
 )
 
 func TestRateHandlesDeltasAndCounterReset(t *testing.T) {
@@ -15,6 +20,30 @@ func TestRateHandlesDeltasAndCounterReset(t *testing.T) {
 	}
 	if got := rate(100, 100, 0); got != 0 {
 		t.Fatalf("rate() with zero elapsed time = %v, want 0", got)
+	}
+}
+
+func TestContainerIntervalPersists(t *testing.T) {
+	ctx := context.Background()
+	dataStore, err := store.Open(filepath.Join(t.TempDir(), "interval.db"))
+	if err != nil {
+		t.Fatalf("store.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	collector := New(dataStore, config.Config{ContainerInterval: 30 * time.Second})
+	if err := collector.SetContainerInterval(ctx, 45); err != nil {
+		t.Fatalf("SetContainerInterval() error = %v", err)
+	}
+	reloaded := New(dataStore, config.Config{ContainerInterval: 15 * time.Second})
+	if err := reloaded.LoadSettings(ctx); err != nil {
+		t.Fatalf("LoadSettings() error = %v", err)
+	}
+	if got := reloaded.ContainerInterval(); got != 45*time.Second {
+		t.Fatalf("ContainerInterval() = %v, want 45s", got)
+	}
+	if err := reloaded.SetContainerInterval(ctx, 20); err == nil {
+		t.Fatal("SetContainerInterval(20) error = nil, want validation error")
 	}
 }
 

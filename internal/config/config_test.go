@@ -18,6 +18,7 @@ func TestLoadDefaultsAndLegacyAuthFallback(t *testing.T) {
 	t.Setenv("AUTH_ALLOWED_ORIGINS", "https://monitor.example, http://localhost:8000/")
 	t.Setenv("NETWORK_INTERFACES", "eth0, tailscale0, eth0")
 	t.Setenv("CONTAINER_METRICS_ENABLED", "true")
+	t.Setenv("CONTAINER_COLLECTION_INTERVAL", "45s")
 	t.Setenv("CONTAINER_API_URL", "http://docker-proxy:2375/")
 	t.Setenv("DOCKER_SOCKET", "/run/user/1000/docker.sock")
 
@@ -42,8 +43,15 @@ func TestLoadDefaultsAndLegacyAuthFallback(t *testing.T) {
 	if len(cfg.NetworkInterfaces) != 2 || cfg.NetworkInterfaces[0] != "eth0" || cfg.NetworkInterfaces[1] != "tailscale0" {
 		t.Fatalf("network interfaces were not normalized: %#v", cfg.NetworkInterfaces)
 	}
-	if !cfg.ContainerMetrics || cfg.ContainerAPIURL != "http://docker-proxy:2375" || cfg.DockerSocket != "/run/user/1000/docker.sock" {
+	if !cfg.ContainerMetrics || cfg.ContainerInterval != 45*time.Second || cfg.ContainerAPIURL != "http://docker-proxy:2375" || cfg.DockerSocket != "/run/user/1000/docker.sock" {
 		t.Fatalf("container settings were not loaded: %#v", cfg)
+	}
+}
+
+func TestLoadRejectsUnsupportedContainerInterval(t *testing.T) {
+	t.Setenv("CONTAINER_COLLECTION_INTERVAL", "20s")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want unsupported container interval error")
 	}
 }
 

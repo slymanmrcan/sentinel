@@ -65,3 +65,23 @@ func containsRule(rules []AlertRule, id string) bool {
 	}
 	return false
 }
+
+func TestSettingRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	dataStore, err := Open(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	if _, found, err := dataStore.Setting(ctx, "container_interval_seconds"); err != nil || found {
+		t.Fatalf("missing Setting() = found %t, error %v", found, err)
+	}
+	if err := dataStore.SetSetting(ctx, "container_interval_seconds", "45"); err != nil {
+		t.Fatalf("SetSetting() error = %v", err)
+	}
+	value, found, err := dataStore.Setting(ctx, "container_interval_seconds")
+	if err != nil || !found || value != "45" {
+		t.Fatalf("Setting() = (%q, %t, %v), want (45, true, nil)", value, found, err)
+	}
+}

@@ -17,22 +17,28 @@ func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error)
 }
 
 func TestDockerContainerSourceCollectsCPUAndMemory(t *testing.T) {
+	statsCalls := 0
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body := ""
 		switch request.URL.Path {
 		case "/containers/json":
 			body = `[{"Id":"1234567890abcdef","Names":["/api"],"Image":"example/api:latest","State":"running","Status":"Up 2 hours"}]`
 		case "/containers/1234567890abcdef/stats":
-			if request.URL.Query().Get("stream") != "false" || request.URL.Query().Has("one-shot") {
+			if request.URL.Query().Get("stream") != "false" || request.URL.Query().Get("one-shot") != "true" {
 				return nil, fmt.Errorf("unexpected stats query: %s", request.URL.RawQuery)
 			}
-			body = `{
-				"cpu_stats":{"cpu_usage":{"total_usage":300},"system_cpu_usage":2000,"online_cpus":2},
-				"precpu_stats":{"cpu_usage":{"total_usage":100},"system_cpu_usage":1000},
+			statsCalls++
+			cpuTotal, systemTotal := 100, 1000
+			if statsCalls > 1 {
+				cpuTotal, systemTotal = 300, 2000
+			}
+			body = fmt.Sprintf(`{
+				"cpu_stats":{"cpu_usage":{"total_usage":%d},"system_cpu_usage":%d,"online_cpus":2},
+				"precpu_stats":{},
 				"memory_stats":{"usage":1000,"limit":2000,"stats":{"inactive_file":200}},
 				"networks":{"eth0":{"rx_bytes":500,"tx_bytes":250}},
 				"pids_stats":{"current":7}
-			}`
+			}`, cpuTotal, systemTotal)
 		default:
 			return &http.Response{StatusCode: http.StatusNotFound, Status: "404 Not Found", Body: io.NopCloser(bytes.NewBufferString("not found")), Header: make(http.Header)}, nil
 		}
@@ -40,9 +46,16 @@ func TestDockerContainerSourceCollectsCPUAndMemory(t *testing.T) {
 	})
 
 	source := &dockerContainerSource{baseURL: "http://docker", client: &http.Client{Transport: transport, Timeout: time.Second}}
-	metrics, err := source.Collect(context.Background())
+	firstMetrics, err := source.Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
+	}
+	if len(firstMetrics) != 1 || firstMetrics[0].CPUPercent != 0 {
+		t.Fatalf("first sample CPU = %#v, want zero until a previous sample exists", firstMetrics)
+	}
+	metrics, err := source.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("second Collect() error = %v", err)
 	}
 	if len(metrics) != 1 {
 		t.Fatalf("metric count = %d, want 1", len(metrics))

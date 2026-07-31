@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/slymanmrcan/sentinel/internal/auth"
+	"github.com/slymanmrcan/sentinel/internal/monitor"
 )
 
 const maxLogBodyBytes = 16 << 10
@@ -51,6 +53,28 @@ func (s *Server) handleSystemDetails(w http.ResponseWriter, _ *http.Request, _ a
 }
 
 func (s *Server) handleContainers(w http.ResponseWriter, _ *http.Request, _ auth.Principal) {
+	writeJSON(w, http.StatusOK, s.collector.Containers())
+}
+
+type containerSettingsInput struct {
+	IntervalSeconds int `json:"interval_seconds"`
+}
+
+func (s *Server) handleContainerSettings(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+	var input containerSettingsInput
+	if err := decodeJSON(w, r, maxLogBodyBytes, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.collector.SetContainerInterval(r.Context(), input.IntervalSeconds); err != nil {
+		if errors.Is(err, monitor.ErrInvalidContainerInterval) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to save container interval")
+		return
+	}
+	s.log(r.Context(), "INFO", fmt.Sprintf("Container collection interval changed to %ds", input.IntervalSeconds), "monitor")
 	writeJSON(w, http.StatusOK, s.collector.Containers())
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,9 @@ type Collector struct {
 	containerMu  sync.RWMutex
 	containers   ContainerSnapshot
 	containerSrc containerSource
+	intervalMu   sync.RWMutex
+	interval     time.Duration
+	intervalSet  chan struct{}
 	lastAnomaly  map[string]time.Time
 	lastAlert    map[string]time.Time
 }
@@ -45,13 +49,20 @@ type ioSample struct {
 
 func New(dataStore *store.Store, cfg config.Config) *Collector {
 	containerSrc, containerEnabled := newContainerSource(cfg)
+	interval := cfg.ContainerInterval
+	if interval == 0 {
+		interval = 15 * time.Second
+	}
 	return &Collector{
 		store:        dataStore,
 		cfg:          cfg,
 		processes:    make(map[int32]processSample),
 		containerSrc: containerSrc,
+		interval:     interval,
+		intervalSet:  make(chan struct{}, 1),
 		containers: ContainerSnapshot{
-			Enabled: containerEnabled, Message: "Container metrics are disabled", Containers: []ContainerMetric{},
+			Enabled: containerEnabled, Message: "Container metrics are disabled",
+			IntervalSec: int(interval / time.Second), Containers: []ContainerMetric{},
 		},
 		lastAnomaly: make(map[string]time.Time),
 		lastAlert:   make(map[string]time.Time),
@@ -63,8 +74,8 @@ func (c *Collector) Start(ctx context.Context) {
 	c.collectContainers(ctx)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
-	containerTicker := time.NewTicker(15 * time.Second)
-	defer containerTicker.Stop()
+	containerTimer := time.NewTimer(c.ContainerInterval())
+	defer containerTimer.Stop()
 	pruneTicker := time.NewTicker(time.Hour)
 	defer pruneTicker.Stop()
 
@@ -74,8 +85,17 @@ func (c *Collector) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 			c.collect(ctx)
-		case <-containerTicker.C:
+		case <-containerTimer.C:
 			c.collectContainers(ctx)
+			containerTimer.Reset(c.ContainerInterval())
+		case <-c.intervalSet:
+			if !containerTimer.Stop() {
+				select {
+				case <-containerTimer.C:
+				default:
+				}
+			}
+			containerTimer.Reset(c.ContainerInterval())
 		case <-pruneTicker.C:
 			if err := c.store.Prune(ctx); err != nil {
 				log.Printf("telemetry prune failed: %v", err)
@@ -88,6 +108,7 @@ func (c *Collector) Containers() ContainerSnapshot {
 	c.containerMu.RLock()
 	defer c.containerMu.RUnlock()
 	snapshot := c.containers
+	snapshot.IntervalSec = int(c.ContainerInterval() / time.Second)
 	snapshot.Containers = make([]ContainerMetric, len(c.containers.Containers))
 	copy(snapshot.Containers, c.containers.Containers)
 	return snapshot
@@ -102,7 +123,8 @@ func (c *Collector) collectContainers(ctx context.Context) {
 	containers, err := c.containerSrc.Collect(collectCtx)
 	collectedAt := time.Now()
 	snapshot := ContainerSnapshot{
-		Enabled: true, Available: err == nil, CollectedAt: &collectedAt, Containers: containers,
+		Enabled: true, Available: err == nil, CollectedAt: &collectedAt,
+		IntervalSec: int(c.ContainerInterval() / time.Second), Containers: containers,
 	}
 	if containers == nil {
 		snapshot.Containers = []ContainerMetric{}
@@ -114,6 +136,46 @@ func (c *Collector) collectContainers(ctx context.Context) {
 	c.containerMu.Lock()
 	c.containers = snapshot
 	c.containerMu.Unlock()
+}
+
+func (c *Collector) LoadSettings(ctx context.Context) error {
+	raw, found, err := c.store.Setting(ctx, containerIntervalSettingKey)
+	if err != nil || !found {
+		return err
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || !validContainerInterval(seconds) {
+		return fmt.Errorf("load saved container interval %q: %w", raw, ErrInvalidContainerInterval)
+	}
+	c.setContainerInterval(time.Duration(seconds) * time.Second)
+	return nil
+}
+
+func (c *Collector) SetContainerInterval(ctx context.Context, seconds int) error {
+	if !validContainerInterval(seconds) {
+		return ErrInvalidContainerInterval
+	}
+	if err := c.store.SetSetting(ctx, containerIntervalSettingKey, strconv.Itoa(seconds)); err != nil {
+		return err
+	}
+	c.setContainerInterval(time.Duration(seconds) * time.Second)
+	return nil
+}
+
+func (c *Collector) ContainerInterval() time.Duration {
+	c.intervalMu.RLock()
+	defer c.intervalMu.RUnlock()
+	return c.interval
+}
+
+func (c *Collector) setContainerInterval(interval time.Duration) {
+	c.intervalMu.Lock()
+	c.interval = interval
+	c.intervalMu.Unlock()
+	select {
+	case c.intervalSet <- struct{}{}:
+	default:
+	}
 }
 
 func (c *Collector) Current() store.Metric {

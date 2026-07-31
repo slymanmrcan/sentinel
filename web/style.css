@@ -78,6 +78,10 @@ button { cursor: pointer; }
 .export-button { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 3px; color: var(--text-soft); font-size: 9px; }
 .export-button:hover { background: var(--surface-2); color: var(--text); }
 .updated-at { color: #565c5c; font-family: var(--mono); font-size: 8px; white-space: nowrap; }
+.interval-control { display: inline-flex; height: 30px; align-items: center; gap: 6px; padding-left: 8px; border: 1px solid var(--line-strong); border-radius: 3px; background: #0e1010; color: var(--muted); font-family: var(--mono); font-size: 7px; text-transform: uppercase; }
+.interval-control select { height: 28px; padding: 0 22px 0 6px; border: 0; border-left: 1px solid var(--line); outline: 0; background: #111414; color: var(--cyan); font-family: var(--mono); font-size: 8px; }
+.interval-control select:focus { box-shadow: inset 0 0 0 1px #356064; }
+.interval-control select:disabled { color: var(--muted); cursor: not-allowed; opacity: .65; }
 .menu-button { display: none; width: 34px; height: 32px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); color: var(--text-soft); }
 
 main { display: flex; flex-direction: column; gap: 22px; padding: 24px 22px 44px; }
@@ -275,6 +279,9 @@ th:not(:first-child), td:not(:first-child) { text-align: right; }
     .container-summary-grid { grid-template-columns: 1fr; gap: 8px; }
     .page-title code { display: none; }
     .topbar-actions { margin-left: auto; }
+    .interval-control { padding-left: 0; }
+    .interval-control span { display: none; }
+    .interval-control select { border-left: 0; }
     .chart-panel .panel-heading { min-height: 78px; align-items: flex-start; flex-direction: column; padding: 10px 12px; }
     .chart-controls { width: 100%; align-items: stretch; }
     .range-controls { justify-content: flex-end; }
