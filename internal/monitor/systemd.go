@@ -279,25 +279,7 @@ func (m *SystemdMonitor) collect(
 		}
 	}
 
-	services := parseSystemctlShow(
-		output,
-		m.units,
-	)
-
-	/*
-		Journal command'ları systemctl'in context'ini paylaşmıyor.
-
-		Her servisin kendi timeout'u var.
-	*/
-	for index := range services {
-		logs, available := m.journal(
-			ctx,
-			services[index].Unit,
-		)
-
-		services[index].Logs = logs
-		services[index].JournalReady = available
-	}
+	services := parseSystemctlShow(output, m.units)
 
 	return SystemdSnapshot{
 		Enabled:   true,
