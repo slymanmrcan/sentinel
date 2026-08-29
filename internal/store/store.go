@@ -115,7 +115,7 @@ func Open(path string) (*Store, error) {
 	db.SetMaxIdleConns(1)
 
 	store := &Store{db: db}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()

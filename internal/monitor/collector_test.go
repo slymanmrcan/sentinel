@@ -35,7 +35,7 @@ func TestContainerIntervalPersists(t *testing.T) {
 	if err := collector.SetContainerInterval(ctx, 45); err != nil {
 		t.Fatalf("SetContainerInterval() error = %v", err)
 	}
-	reloaded := New(dataStore, config.Config{ContainerInterval: 15 * time.Second})
+	reloaded := New(dataStore, config.Config{ContainerInterval: 30 * time.Second})
 	if err := reloaded.LoadSettings(ctx); err != nil {
 		t.Fatalf("LoadSettings() error = %v", err)
 	}

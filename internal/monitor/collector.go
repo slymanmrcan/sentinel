@@ -52,7 +52,7 @@ func New(dataStore *store.Store, cfg config.Config) *Collector {
 	containerSrc, containerEnabled := newContainerSource(cfg)
 	interval := cfg.ContainerInterval
 	if interval == 0 {
-		interval = 15 * time.Second
+		interval = 30 * time.Second
 	}
 	return &Collector{
 		store:        dataStore,
@@ -74,7 +74,7 @@ func New(dataStore *store.Store, cfg config.Config) *Collector {
 func (c *Collector) Start(ctx context.Context) {
 	c.collect(ctx)
 	c.collectContainers(ctx)
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	containerTimer := time.NewTimer(c.ContainerInterval())
 	defer containerTimer.Stop()
@@ -120,7 +120,7 @@ func (c *Collector) collectContainers(ctx context.Context) {
 	if c.containerSrc == nil {
 		return
 	}
-	collectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	collectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	containers, err := c.containerSrc.Collect(collectCtx)
 	collectedAt := time.Now()
