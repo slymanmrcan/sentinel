@@ -28,6 +28,7 @@
                 <a class="nav-item" href="#containers" data-section="containers"><span aria-hidden="true">⬡</span>Containers</a>
                 <a class="nav-item" href="#anomalies" data-section="anomalies"><span aria-hidden="true">⌁</span>Anomalies</a>
                 <a class="nav-item" href="#alerts" data-section="alerts"><span aria-hidden="true">♧</span>Alerts <b id="alertNavCount">0</b></a>
+                <a class="nav-item" href="#services" data-section="services"><span aria-hidden="true">◉</span>Services <b id="serviceNavCount">—</b></a>
                 <a class="nav-item" href="#inspector" data-section="inspector"><span aria-hidden="true">⌕</span>Inspector</a>
                 <a class="nav-item" href="#events" data-section="events"><span aria-hidden="true">≡</span>Events</a>
             </nav>
@@ -235,6 +236,21 @@
                             </div>
                             <div class="event-list" id="alertList"><div class="empty-state">No alert events.</div></div>
                         </article>
+                    </div>
+                </section>
+
+                <section class="dashboard-section" id="services">
+                    <div class="section-title">
+                        <h2>System services</h2>
+                        <span id="serviceCollectionState">systemd status · recent journal</span>
+                    </div>
+                    <div class="service-summary-grid" aria-label="System service totals">
+                        <article class="panel compact-stat"><span>Configured</span><strong id="serviceCount">—</strong><small>allowlisted units</small></article>
+                        <article class="panel compact-stat service-running-stat"><span>Running</span><strong id="serviceRunningCount">—</strong><small>active units</small></article>
+                        <article class="panel compact-stat service-failed-stat"><span>Failed</span><strong id="serviceFailedCount">—</strong><small>needs attention</small></article>
+                    </div>
+                    <div class="service-grid" id="serviceList">
+                        <article class="panel"><div class="empty-state">Checking configured services…</div></article>
                     </div>
                 </section>
 

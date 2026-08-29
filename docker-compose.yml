@@ -37,6 +37,8 @@ services:
       - CONTAINER_COLLECTION_INTERVAL
       - CONTAINER_API_URL
       - DOCKER_SOCKET
+      - SYSTEMD_UNITS
+      - SYSTEMD_LOG_LINES
     volumes:
       - ./data:/data
       - /proc:/host/proc:ro

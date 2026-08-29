@@ -12,7 +12,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o sentinel ./cmd/api
 
 # Run stage
 FROM debian:12-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates systemd && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder /app/sentinel /app/sentinel

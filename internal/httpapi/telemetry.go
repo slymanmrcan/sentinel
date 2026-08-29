@@ -52,6 +52,10 @@ func (s *Server) handleSystemDetails(w http.ResponseWriter, _ *http.Request, _ a
 	writeJSON(w, http.StatusOK, s.collector.SystemDetails())
 }
 
+func (s *Server) handleSystemServices(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+	writeJSON(w, http.StatusOK, s.collector.SystemServices(r.Context()))
+}
+
 func (s *Server) handleContainers(w http.ResponseWriter, _ *http.Request, _ auth.Principal) {
 	writeJSON(w, http.StatusOK, s.collector.Containers())
 }

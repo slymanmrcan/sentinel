@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +29,11 @@ type Config struct {
 	ContainerInterval time.Duration
 	ContainerAPIURL   string
 	DockerSocket      string
+	SystemdUnits      []string
+	SystemdLogLines   int
 }
+
+var systemdUnitPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,126}\.service$`)
 
 func Load() (Config, error) {
 	_ = godotenv.Load()
@@ -54,6 +59,14 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	containerInterval, err := parseContainerInterval(os.Getenv("CONTAINER_COLLECTION_INTERVAL"))
+	if err != nil {
+		return Config{}, err
+	}
+	systemdUnits, err := parseSystemdUnits(os.Getenv("SYSTEMD_UNITS"))
+	if err != nil {
+		return Config{}, err
+	}
+	systemdLogLines, err := envIntRange("SYSTEMD_LOG_LINES", 8, 1, 50)
 	if err != nil {
 		return Config{}, err
 	}
@@ -88,7 +101,34 @@ func Load() (Config, error) {
 		ContainerInterval: containerInterval,
 		ContainerAPIURL:   containerAPIURL,
 		DockerSocket:      envOr("DOCKER_SOCKET", "/var/run/docker.sock"),
+		SystemdUnits:      systemdUnits,
+		SystemdLogLines:   systemdLogLines,
 	}, nil
+}
+
+func parseSystemdUnits(raw string) ([]string, error) {
+	units := splitCSV(raw)
+	if len(units) > 20 {
+		return nil, fmt.Errorf("SYSTEMD_UNITS must contain at most 20 services")
+	}
+	for _, unit := range units {
+		if !systemdUnitPattern.MatchString(unit) {
+			return nil, fmt.Errorf("SYSTEMD_UNITS contains invalid service name %q", unit)
+		}
+	}
+	return units, nil
+}
+
+func envIntRange(key string, fallback, minimum, maximum int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < minimum || value > maximum {
+		return 0, fmt.Errorf("%s must be between %d and %d", key, minimum, maximum)
+	}
+	return value, nil
 }
 
 func parseContainerInterval(raw string) (time.Duration, error) {

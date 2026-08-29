@@ -104,6 +104,8 @@ reverse proxy arkasında tutun.
 | `CONTAINER_COLLECTION_INTERVAL` | `15s` | İlk container ölçüm aralığı: `15s`, `30s`, `45s`, `1m`, `2m` |
 | `CONTAINER_API_URL` | boş | Korunan Docker API/proxy adresi |
 | `DOCKER_SOCKET` | `/var/run/docker.sock` | API URL yoksa kullanılan Unix socket |
+| `SYSTEMD_UNITS` | boş | Durumu ve journal özeti okunacak virgülle ayrılmış `.service` allowlist'i |
+| `SYSTEMD_LOG_LINES` | `8` | Servis başına gösterilecek son journal satırı (`1`–`50`) |
 
 Uygulama başlangıçta çalışma dizinindeki `.env` dosyasını yükler; gerçek ortam
 değişkenleri `.env` değerlerinden önceliklidir. `.env` Git tarafından yok
@@ -140,6 +142,7 @@ erişilemiyor ve tüm istekler güvenilir proxy’den geliyorsa kullanılmalıd�
 | `GET` | `/api/alerts/events` | Evet | Alert geçmişi |
 | `GET/POST/DELETE` | `/api/logs` | Evet | Event akışı |
 | `GET` | `/api/system/details` | Evet | Process, port, kernel |
+| `GET` | `/api/system/services` | Evet | Allowlist'teki systemd servisleri ve kısa journal özeti |
 | `GET` | `/api/containers` | Evet | Opsiyonel container snapshot'ı |
 | `PUT` | `/api/containers/settings` | Evet + CSRF | Container ölçüm aralığını değiştirir |
 | `GET` | `/api/export/*.csv` | Evet | CSV export |
@@ -150,6 +153,23 @@ ağ arayüzlerinin toplamıdır; bridge, veth ve loopback trafiğini içerebilec
 için internet sağlayıcısı fatura ölçümü olarak değerlendirilmemelidir.
 `NETWORK_INTERFACES=eth0,wlan0` gibi açık bir liste verilerek hangi sayaçların
 dahil olacağı sınırlandırılabilir.
+
+## Systemd servis gözetimi
+
+Panel yalnız açıkça seçilen `.service` unit'lerini salt-okunur olarak sorgular;
+start, stop veya restart endpoint'i sunmaz. Örneğin:
+
+```env
+SYSTEMD_UNITS=fail2ban.service,ssh.service,docker.service
+SYSTEMD_LOG_LINES=8
+```
+
+Services bölümü active/failed durumu, enable durumu, `Restart=` politikası,
+mevcut systemd manager oturumundaki restart sayısı ve son journal kayıtlarını
+gösterir. Doğrudan hostta çalıştırıldığında `systemctl` ve `journalctl` PATH'te
+olmalıdır. Docker image bu araçları içerir; Compose kurulumu mevcut read-only
+host root mount'u üzerinden host system bus ve journal'ını okur. Erişim yoksa
+API boş/yanıltıcı durum üretmek yerine özelliği `unavailable` olarak işaretler.
 
 ## Container telemetrisi
 
@@ -352,6 +372,17 @@ verification.
 
 Metrics, anomalies, and alerts are retained for 30 days; system events for 7
 days. Database files, `.env`, WAL files, and binaries are ignored by Git.
+
+Optional systemd monitoring is configured with a comma-separated allowlist:
+
+```env
+SYSTEMD_UNITS=fail2ban.service,ssh.service,docker.service
+SYSTEMD_LOG_LINES=8
+```
+
+The Services section reports active/failed state, enablement, the configured
+restart policy, restart count, and a bounded recent journal excerpt. It is
+read-only and exposes no service-control endpoint.
 
 The network card shows live inbound/outbound throughput and the inbound,
 outbound, and combined byte counters accumulated since the host booted. These

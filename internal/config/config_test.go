@@ -21,6 +21,8 @@ func TestLoadDefaultsAndLegacyAuthFallback(t *testing.T) {
 	t.Setenv("CONTAINER_COLLECTION_INTERVAL", "45s")
 	t.Setenv("CONTAINER_API_URL", "http://docker-proxy:2375/")
 	t.Setenv("DOCKER_SOCKET", "/run/user/1000/docker.sock")
+	t.Setenv("SYSTEMD_UNITS", "fail2ban.service, ssh.service, fail2ban.service")
+	t.Setenv("SYSTEMD_LOG_LINES", "12")
 
 	cfg, err := Load()
 	if err != nil {
@@ -45,6 +47,23 @@ func TestLoadDefaultsAndLegacyAuthFallback(t *testing.T) {
 	}
 	if !cfg.ContainerMetrics || cfg.ContainerInterval != 45*time.Second || cfg.ContainerAPIURL != "http://docker-proxy:2375" || cfg.DockerSocket != "/run/user/1000/docker.sock" {
 		t.Fatalf("container settings were not loaded: %#v", cfg)
+	}
+	if len(cfg.SystemdUnits) != 2 || cfg.SystemdUnits[0] != "fail2ban.service" || cfg.SystemdUnits[1] != "ssh.service" || cfg.SystemdLogLines != 12 {
+		t.Fatalf("systemd settings were not loaded: %#v", cfg)
+	}
+}
+
+func TestLoadRejectsInvalidSystemdUnit(t *testing.T) {
+	t.Setenv("SYSTEMD_UNITS", "--all.service")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want invalid systemd unit error")
+	}
+}
+
+func TestLoadRejectsSystemdLogLineLimit(t *testing.T) {
+	t.Setenv("SYSTEMD_LOG_LINES", "1000")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want invalid systemd log line limit error")
 	}
 }
 

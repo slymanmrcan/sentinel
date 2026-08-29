@@ -33,6 +33,7 @@ type Collector struct {
 	containerMu  sync.RWMutex
 	containers   ContainerSnapshot
 	containerSrc containerSource
+	systemd      *SystemdMonitor
 	intervalMu   sync.RWMutex
 	interval     time.Duration
 	intervalSet  chan struct{}
@@ -58,6 +59,7 @@ func New(dataStore *store.Store, cfg config.Config) *Collector {
 		cfg:          cfg,
 		processes:    make(map[int32]processSample),
 		containerSrc: containerSrc,
+		systemd:      NewSystemdMonitor(cfg.SystemdUnits, cfg.SystemdLogLines, cfg.HostRoot),
 		interval:     interval,
 		intervalSet:  make(chan struct{}, 1),
 		containers: ContainerSnapshot{

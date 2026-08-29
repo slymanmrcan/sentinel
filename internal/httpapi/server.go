@@ -68,6 +68,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/metrics/history", s.requireAuth(s.handleHistory))
 	mux.HandleFunc("GET /api/metrics/summary", s.requireAuth(s.handleSummary))
 	mux.HandleFunc("GET /api/system/details", s.requireAuth(s.handleSystemDetails))
+	mux.HandleFunc("GET /api/system/services", s.requireAuth(s.handleSystemServices))
 	mux.HandleFunc("GET /api/containers", s.requireAuth(s.handleContainers))
 	mux.HandleFunc("PUT /api/containers/settings", s.requireAuth(s.handleContainerSettings))
 	mux.HandleFunc("GET /api/logs", s.requireAuth(s.handleLogs))

@@ -6,7 +6,8 @@ const state = {
     latestMetric: null,
     logSearchTimer: null,
     containerRefreshTimer: null,
-    containerIntervalSeconds: 15
+	containerIntervalSeconds: 15,
+	systemServicesLoading: false
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -18,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadRealtime(),
         loadHistory(),
         loadSystemDetails(),
+		loadSystemServices(),
         loadContainers(),
         loadAnalysis(),
         loadAlerts(),
@@ -26,6 +28,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.setInterval(loadRealtime, 2000);
     window.setInterval(loadSystemDetails, 15000);
+	window.setInterval(loadSystemServices, 15000);
     window.setInterval(loadAnalysis, 30000);
     window.setInterval(loadAlerts, 30000);
     window.setInterval(loadEvents, 10000);
@@ -416,6 +419,151 @@ function renderPortTable(ports) {
         fragment.appendChild(row);
     });
     body.replaceChildren(fragment);
+}
+
+async function loadSystemServices() {
+	if (state.systemServicesLoading) return;
+	state.systemServicesLoading = true;
+	try {
+		const response = await apiFetch('/api/system/services');
+		if (!response.ok) throw new Error(`System services returned ${response.status}`);
+		renderSystemServices(await response.json());
+	} catch (error) {
+		console.error('Unable to load system services:', error);
+		setText('serviceCollectionState', 'systemd status unavailable');
+		renderServiceSummary(null);
+		document.getElementById('serviceList').replaceChildren(serviceEmptyPanel('Unable to load system service status.'));
+	} finally {
+		state.systemServicesLoading = false;
+	}
+}
+
+function renderSystemServices(snapshot) {
+	const services = snapshot.services || [];
+	if (!snapshot.enabled) {
+		setText('serviceCollectionState', 'optional systemd monitoring · disabled');
+		renderServiceSummary([]);
+		document.getElementById('serviceList').replaceChildren(serviceEmptyPanel(
+			snapshot.message || 'Set SYSTEMD_UNITS to choose services to monitor.'
+		));
+		return;
+	}
+	if (!snapshot.available) {
+		setText('serviceCollectionState', snapshot.message || 'systemd is unavailable');
+		renderServiceSummary(null);
+		document.getElementById('serviceList').replaceChildren(serviceEmptyPanel(
+			'Sentinel cannot reach systemctl. Check the host bus mount and container setup.'
+		));
+		return;
+	}
+	const checked = snapshot.checked_at ? new Date(snapshot.checked_at).toLocaleTimeString() : 'just now';
+	setText('serviceCollectionState', `systemd status · checked ${checked}`);
+	renderServiceSummary(services);
+	const list = document.getElementById('serviceList');
+	const fragment = document.createDocumentFragment();
+	services.forEach((service) => fragment.appendChild(serviceCard(service)));
+	list.replaceChildren(fragment);
+}
+
+function renderServiceSummary(services) {
+	if (!services) {
+		['serviceCount', 'serviceRunningCount', 'serviceFailedCount', 'serviceNavCount'].forEach((id) => setText(id, '—'));
+		return;
+	}
+	const running = services.filter((service) => service.active_state === 'active').length;
+	const failed = services.filter((service) => service.active_state === 'failed').length;
+	setText('serviceCount', services.length);
+	setText('serviceRunningCount', running);
+	setText('serviceFailedCount', failed);
+	setText('serviceNavCount', failed);
+}
+
+function serviceCard(service) {
+	const card = document.createElement('article');
+	const stateName = service.active_state || 'unknown';
+	card.className = `panel service-card ${stateName}`;
+
+	const heading = document.createElement('div');
+	heading.className = 'panel-heading';
+	const title = document.createElement('div');
+	title.className = 'service-title';
+	const unit = document.createElement('h3');
+	unit.textContent = service.unit || 'unknown.service';
+	const description = document.createElement('span');
+	description.textContent = service.description || service.load_state || 'No description';
+	title.append(unit, description);
+	const badge = document.createElement('span');
+	badge.className = `service-state ${stateName}`;
+	badge.textContent = service.sub_state && service.sub_state !== stateName
+		? `${stateName} · ${service.sub_state}`
+		: stateName;
+	heading.append(title, badge);
+
+	const meta = document.createElement('dl');
+	meta.className = 'service-meta';
+	meta.append(
+		serviceMeta('Startup', service.unit_file_state || '—'),
+		serviceMeta('Restart policy', service.restart_policy || '—'),
+		serviceMeta('Restarts', service.restarts ?? 0),
+		serviceMeta('Active since', service.active_since ? formatServiceTime(service.active_since) : (service.result || '—'))
+	);
+
+	const journal = document.createElement('div');
+	journal.className = 'journal-list';
+	const journalTitle = document.createElement('strong');
+	journalTitle.className = 'journal-title';
+	journalTitle.textContent = 'Recent journal';
+	journal.appendChild(journalTitle);
+	const logs = service.logs || [];
+	if (!service.journal_available) {
+		const empty = document.createElement('div');
+		empty.className = 'journal-empty';
+		empty.textContent = 'Journal is unavailable. Check host journal access.';
+		journal.appendChild(empty);
+	} else if (!logs.length) {
+		const empty = document.createElement('div');
+		empty.className = 'journal-empty';
+		empty.textContent = 'No journal entries returned.';
+		journal.appendChild(empty);
+	} else {
+		logs.forEach((entry) => journal.appendChild(journalRow(entry)));
+	}
+
+	card.append(heading, meta, journal);
+	return card;
+}
+
+function serviceMeta(label, value) {
+	const item = document.createElement('div');
+	const term = document.createElement('dt');
+	term.textContent = label;
+	const detail = document.createElement('dd');
+	detail.textContent = String(value);
+	item.append(term, detail);
+	return item;
+}
+
+function journalRow(entry) {
+	const row = document.createElement('div');
+	row.className = Number(entry.priority) <= 3 ? 'journal-row error' : 'journal-row';
+	const time = document.createElement('time');
+	time.textContent = formatEventTime(entry.timestamp);
+	const message = document.createElement('span');
+	message.textContent = entry.message || '';
+	row.append(time, message);
+	return row;
+}
+
+function serviceEmptyPanel(message) {
+	const panel = document.createElement('article');
+	panel.className = 'panel';
+	panel.appendChild(emptyState(message));
+	return panel;
+}
+
+function formatServiceTime(timestamp) {
+	const date = new Date(timestamp);
+	return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 }
 
 async function loadContainers() {
