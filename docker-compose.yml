@@ -6,24 +6,30 @@ services:
     restart: unless-stopped
     read_only: true
     init: true
+
     expose:
       - "8000"
+
     security_opt:
       - no-new-privileges:true
+
     cap_drop:
       - ALL
+
     deploy:
       resources:
         limits:
           cpus: '0.25'
           memory: 256M
+
     environment:
       - PORT=8000
       - DB_PATH=/data/metrics.db
+
       - HOST_PROC=/host/proc
       - HOST_SYS=/host/sys
       - HOST_ROOT=/host/root
-      # Define auth values inside a local .env file (git ignored)
+
       - ADMIN_LOGIN
       - ADMIN_EMAIL
       - ADMIN_PASSWORD
@@ -33,23 +39,34 @@ services:
       - AUTH_ALLOWED_ORIGINS
       - TRUST_PROXY_HEADERS
       - NETWORK_INTERFACES
+
       - CONTAINER_METRICS_ENABLED
       - CONTAINER_COLLECTION_INTERVAL
       - CONTAINER_API_URL
       - DOCKER_SOCKET
+
       - SYSTEMD_UNITS
       - SYSTEMD_LOG_LINES
+
     volumes:
       - ./data:/data
+
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-      # Mount host root to monitor host disk usage
       - /:/host/root:ro
+
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # Host systemd runtime
+      - /run/systemd:/run/systemd:ro
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro
+
     tmpfs:
       - /tmp:size=16m,mode=1777
+
     networks:
       - infra_net
+
     group_add:
       - "${DOCKER_GID}"
 
