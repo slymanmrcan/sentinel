@@ -1,3 +1,18 @@
+const pollingIntervals = {
+    realtime: 30000,
+    systemDetails: 60000,
+    systemServices: 60000,
+    analysis: 60000,
+    alerts: 60000,
+    events: 30000
+};
+
+const listLimits = {
+    containers: 10,
+    anomalies: 10,
+    events: 20
+};
+
 const state = {
     csrfToken: '',
     user: null,
@@ -6,8 +21,15 @@ const state = {
     latestMetric: null,
     logSearchTimer: null,
     containerRefreshTimer: null,
-	containerIntervalSeconds: 30,
-	systemServicesLoading: false
+    containerIntervalSeconds: 30,
+    systemServicesLoading: false,
+    containers: [],
+    containersExpanded: false,
+    anomalies: [],
+    anomaliesExpanded: false,
+    events: [],
+    eventsExpanded: false,
+    expandedServices: new Set()
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -19,22 +41,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadRealtime(),
         loadHistory(),
         loadSystemDetails(),
-		loadSystemServices(),
+        loadSystemServices(),
         loadContainers(),
         loadAnalysis(),
         loadAlerts(),
         loadEvents()
     ]);
 
-    window.setInterval(loadRealtime, 30000);
-    window.setInterval(loadSystemDetails, 60000);
-    window.setInterval(loadSystemServices, 60000);
-    window.setInterval(loadAnalysis, 60000);
-    window.setInterval(loadAlerts, 60000);
-    window.setInterval(loadEvents, 30000);
+    window.setInterval(loadRealtime, pollingIntervals.realtime);
+    window.setInterval(loadSystemDetails, pollingIntervals.systemDetails);
+    window.setInterval(loadSystemServices, pollingIntervals.systemServices);
+    window.setInterval(loadAnalysis, pollingIntervals.analysis);
+    window.setInterval(loadAlerts, pollingIntervals.alerts);
+    window.setInterval(loadEvents, pollingIntervals.events);
 });
 
 function bindUI() {
+    setText('overviewRefreshState', `host metrics · ${formatInterval(pollingIntervals.realtime / 1000)} refresh`);
     document.querySelectorAll('[data-range]').forEach((button) => {
         button.addEventListener('click', () => {
             state.chartRange = button.dataset.range;
@@ -62,11 +85,18 @@ function bindUI() {
 
     const search = document.getElementById('eventSearch');
     search.addEventListener('input', () => {
+        state.eventsExpanded = false;
         window.clearTimeout(state.logSearchTimer);
         state.logSearchTimer = window.setTimeout(loadEvents, 250);
     });
-    document.getElementById('eventLevel').addEventListener('change', loadEvents);
+    document.getElementById('eventLevel').addEventListener('change', () => {
+        state.eventsExpanded = false;
+        loadEvents();
+    });
     document.getElementById('containerInterval').addEventListener('change', changeContainerInterval);
+    document.getElementById('containerToggle').addEventListener('click', toggleContainers);
+    document.getElementById('anomalyToggle').addEventListener('click', toggleAnomalies);
+    document.getElementById('eventToggle').addEventListener('click', toggleEvents);
     document.getElementById('clearEventsButton').addEventListener('click', clearEvents);
     document.getElementById('signOutButton').addEventListener('click', signOut);
     document.getElementById('accountButton').addEventListener('click', () => {
@@ -422,115 +452,164 @@ function renderPortTable(ports) {
 }
 
 async function loadSystemServices() {
-	if (state.systemServicesLoading) return;
-	state.systemServicesLoading = true;
-	try {
-		const response = await apiFetch('/api/system/services');
-		if (!response.ok) throw new Error(`System services returned ${response.status}`);
-		renderSystemServices(await response.json());
-	} catch (error) {
-		console.error('Unable to load system services:', error);
-		setText('serviceCollectionState', 'systemd status unavailable');
-		renderServiceSummary(null);
-		document.getElementById('serviceList').replaceChildren(serviceEmptyPanel('Unable to load system service status.'));
-	} finally {
-		state.systemServicesLoading = false;
-	}
+    if (state.systemServicesLoading) return;
+    state.systemServicesLoading = true;
+    try {
+        const response = await apiFetch('/api/system/services');
+        if (!response.ok) throw new Error(`System services returned ${response.status}`);
+        renderSystemServices(await response.json());
+    } catch (error) {
+        console.error('Unable to load system services:', error);
+        setText('serviceCollectionState', 'systemd status unavailable');
+        renderServiceSummary(null);
+        document.getElementById('serviceList').replaceChildren(serviceEmptyPanel('Unable to load system service status.'));
+    } finally {
+        state.systemServicesLoading = false;
+    }
 }
 
 function renderSystemServices(snapshot) {
-	const services = snapshot.services || [];
-	if (!snapshot.enabled) {
-		setText('serviceCollectionState', 'optional systemd monitoring · disabled');
-		renderServiceSummary([]);
-		document.getElementById('serviceList').replaceChildren(serviceEmptyPanel(
-			snapshot.message || 'Set SYSTEMD_UNITS to choose services to monitor.'
-		));
-		return;
-	}
-	if (!snapshot.available) {
-		setText('serviceCollectionState', snapshot.message || 'systemd is unavailable');
-		renderServiceSummary(null);
-		document.getElementById('serviceList').replaceChildren(serviceEmptyPanel(
-			'Sentinel cannot reach systemctl. Check the host bus mount and container setup.'
-		));
-		return;
-	}
-	const checked = snapshot.checked_at ? new Date(snapshot.checked_at).toLocaleTimeString() : 'just now';
-	setText('serviceCollectionState', `systemd status · checked ${checked}`);
-	renderServiceSummary(services);
-	const list = document.getElementById('serviceList');
-	const fragment = document.createDocumentFragment();
-	services.forEach((service) => fragment.appendChild(serviceCard(service)));
-	list.replaceChildren(fragment);
+    const services = snapshot.services || [];
+    if (!snapshot.enabled) {
+        setText('serviceCollectionState', 'optional systemd monitoring · disabled');
+        renderServiceSummary([]);
+        document.getElementById('serviceList').replaceChildren(serviceEmptyPanel(
+            snapshot.message || 'Set SYSTEMD_UNITS to choose services to monitor.'
+        ));
+        return;
+    }
+    if (!snapshot.available) {
+        setText('serviceCollectionState', snapshot.message || 'systemd is unavailable');
+        renderServiceSummary(null);
+        document.getElementById('serviceList').replaceChildren(serviceEmptyPanel(
+            'Sentinel cannot reach systemctl. Check the host bus mount and container setup.'
+        ));
+        return;
+    }
+    const checked = snapshot.checked_at ? new Date(snapshot.checked_at).toLocaleTimeString() : 'just now';
+    setText('serviceCollectionState', `systemd status · checked ${checked}`);
+    renderServiceSummary(services);
+    const fragment = document.createDocumentFragment();
+    [...services]
+        .sort((left, right) => serviceStateRank(right.active_state) - serviceStateRank(left.active_state))
+        .forEach((service) => fragment.appendChild(serviceCard(service)));
+    document.getElementById('serviceList').replaceChildren(fragment);
 }
 
 function renderServiceSummary(services) {
-	if (!services) {
-		['serviceCount', 'serviceRunningCount', 'serviceFailedCount', 'serviceNavCount'].forEach((id) => setText(id, '—'));
-		return;
-	}
-	const running = services.filter((service) => service.active_state === 'active').length;
-	const failed = services.filter((service) => service.active_state === 'failed').length;
-	setText('serviceCount', services.length);
-	setText('serviceRunningCount', running);
-	setText('serviceFailedCount', failed);
-	setText('serviceNavCount', failed);
+    if (!services) {
+        ['serviceCount', 'serviceRunningCount', 'serviceFailedCount', 'serviceNavCount'].forEach((id) => setText(id, '—'));
+        setOverviewStatus('Service', '—', 'systemd unavailable', 'critical');
+        return;
+    }
+    const running = services.filter((service) => service.active_state === 'active').length;
+    const failed = services.filter((service) => service.active_state === 'failed').length;
+    setText('serviceCount', services.length);
+    setText('serviceRunningCount', running);
+    setText('serviceFailedCount', failed);
+    setText('serviceNavCount', failed);
+    if (!services.length) {
+        setOverviewStatus('Service', 'Off', 'monitoring disabled', 'disabled');
+    } else {
+        const stateName = failed > 0 ? 'critical' : running === services.length ? 'healthy' : 'warning';
+        const detail = failed > 0 ? `${failed} failed` : `${running} of ${services.length} active`;
+        setOverviewStatus('Service', `${running}/${services.length}`, detail, stateName);
+    }
 }
 
 function serviceCard(service) {
-	const card = document.createElement('article');
-	const stateName = service.active_state || 'unknown';
-	card.className = `panel service-card ${stateName}`;
+    const unitName = service.unit || 'unknown.service';
+    const stateName = service.active_state || 'unknown';
+    const card = document.createElement('details');
+    card.className = `panel service-card ${stateName}`;
+    card.open = state.expandedServices.has(unitName);
+    card.addEventListener('toggle', () => {
+        if (card.open) state.expandedServices.add(unitName);
+        else state.expandedServices.delete(unitName);
+    });
 
-	const heading = document.createElement('div');
-	heading.className = 'panel-heading';
-	const title = document.createElement('div');
-	title.className = 'service-title';
-	const unit = document.createElement('h3');
-	unit.textContent = service.unit || 'unknown.service';
-	const description = document.createElement('span');
-	description.textContent = service.description || service.load_state || 'No description';
-	title.append(unit, description);
-	const badge = document.createElement('span');
-	badge.className = `service-state ${stateName}`;
-	badge.textContent = service.sub_state && service.sub_state !== stateName
-		? `${stateName} · ${service.sub_state}`
-		: stateName;
-	heading.append(title, badge);
+    const summary = document.createElement('summary');
+    summary.className = 'service-summary-row';
+    const dot = document.createElement('span');
+    dot.className = 'service-status-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    const title = document.createElement('div');
+    title.className = 'service-title';
+    const unit = document.createElement('h3');
+    unit.textContent = unitName;
+    const description = document.createElement('span');
+    description.textContent = service.description || service.load_state || 'No description';
+    title.append(unit, description);
+    const signals = document.createElement('span');
+    signals.className = 'service-signals';
+    signals.textContent = `${service.load_state || 'unknown'} · ${service.restarts ?? 0} restarts`;
+    const badge = document.createElement('span');
+    badge.className = `service-state ${stateName}`;
+    badge.textContent = service.sub_state && service.sub_state !== stateName
+        ? `${stateName} · ${service.sub_state}`
+        : stateName;
+    summary.append(dot, title, signals, badge);
 
-	const meta = document.createElement('dl');
-	meta.className = 'service-meta';
-	meta.append(
-		serviceMeta('Startup', service.unit_file_state || '—'),
-		serviceMeta('Restart policy', service.restart_policy || '—'),
-		serviceMeta('Restarts', service.restarts ?? 0),
-		serviceMeta('Active since', service.active_since ? formatServiceTime(service.active_since) : (service.result || '—'))
-	);
+    const meta = document.createElement('dl');
+    meta.className = 'service-meta';
+    meta.append(
+        serviceMeta('Startup', service.unit_file_state || '—'),
+        serviceMeta('Restart policy', service.restart_policy || '—'),
+        serviceMeta('Restarts', service.restarts ?? 0),
+        serviceMeta('Active since', service.active_since ? formatServiceTime(service.active_since) : (service.result || '—'))
+    );
 
-	const journal = document.createElement('div');
-	journal.className = 'journal-list';
-	const journalTitle = document.createElement('strong');
-	journalTitle.className = 'journal-title';
-	journalTitle.textContent = 'Recent journal';
-	journal.appendChild(journalTitle);
-	const logs = service.logs || [];
-	if (!service.journal_available) {
-		const empty = document.createElement('div');
-		empty.className = 'journal-empty';
-		empty.textContent = 'Journal is unavailable. Check host journal access.';
-		journal.appendChild(empty);
-	} else if (!logs.length) {
-		const empty = document.createElement('div');
-		empty.className = 'journal-empty';
-		empty.textContent = 'No journal entries returned.';
-		journal.appendChild(empty);
-	} else {
-		logs.forEach((entry) => journal.appendChild(journalRow(entry)));
+    const journal = document.createElement('details');
+    journal.className = 'journal-list';
+    journal.dataset.state = 'idle';
+    const journalTitle = document.createElement('summary');
+    journalTitle.className = 'journal-title';
+    journalTitle.textContent = 'Recent journal · open to load';
+    journal.appendChild(journalTitle);
+    const journalContent = document.createElement('div');
+    journalContent.appendChild(journalMessage('Open this section to load journal entries.'));
+    journal.appendChild(journalContent);
+    journal.addEventListener('toggle', () => {
+        if (journal.open && journal.dataset.state === 'idle') {
+            loadServiceJournal(unitName, journal, journalContent);
+        }
+    });
+
+    card.append(summary, meta, journal);
+    return card;
+}
+
+async function loadServiceJournal(unit, journal, content) {
+	journal.dataset.state = 'loading';
+	content.replaceChildren(journalMessage('Loading journal entries…'));
+	try {
+		const response = await apiFetch(`/api/system/services/${encodeURIComponent(unit)}/logs`);
+		const payload = await response.json();
+		if (!response.ok) throw new Error(payload.error || `Service journal returned ${response.status}`);
+		if (!payload.available) {
+			content.replaceChildren(journalMessage(payload.message || 'Journal is unavailable.'));
+			journal.dataset.state = 'loaded';
+			return;
+		}
+		const logs = payload.logs || [];
+		if (!logs.length) {
+			content.replaceChildren(journalMessage('No journal entries returned.'));
+		} else {
+			content.replaceChildren(...logs.map((entry) => journalRow(entry)));
+		}
+		journal.dataset.state = 'loaded';
+	} catch (error) {
+		console.error(`Unable to load journal for ${unit}:`, error);
+		content.replaceChildren(journalMessage('Unable to load journal entries. Close and reopen to retry.'));
+		journal.dataset.state = 'idle';
 	}
+}
 
-	card.append(heading, meta, journal);
-	return card;
+function journalMessage(message) {
+	const empty = document.createElement('div');
+	empty.className = 'journal-empty';
+	empty.textContent = message;
+	return empty;
 }
 
 function serviceMeta(label, value) {
@@ -573,8 +652,10 @@ async function loadContainers() {
         acceptContainerSnapshot(await response.json());
     } catch (error) {
         console.error('Unable to load container metrics:', error);
+        state.containers = [];
         setText('containerStatus', 'Container telemetry unavailable');
         setText('containerCollectionState', 'collection failed');
+        setOverviewStatus('Container', '—', 'telemetry unavailable', 'critical');
         renderContainerRows([]);
         scheduleContainerLoad(state.containerIntervalSeconds);
     }
@@ -583,7 +664,7 @@ async function loadContainers() {
 function acceptContainerSnapshot(snapshot) {
     const seconds = [15, 30, 45, 60, 120].includes(Number(snapshot.interval_seconds))
         ? Number(snapshot.interval_seconds)
-        : 15;
+        : 30;
     state.containerIntervalSeconds = seconds;
     const control = document.getElementById('containerInterval');
     control.value = String(seconds);
@@ -594,7 +675,7 @@ function acceptContainerSnapshot(snapshot) {
 
 function scheduleContainerLoad(seconds) {
     window.clearTimeout(state.containerRefreshTimer);
-    state.containerRefreshTimer = window.setTimeout(loadContainers, Math.max(15, Number(seconds) || 15) * 1000);
+    state.containerRefreshTimer = window.setTimeout(loadContainers, Math.max(15, Number(seconds) || 30) * 1000);
 }
 
 async function changeContainerInterval(event) {
@@ -619,11 +700,13 @@ async function changeContainerInterval(event) {
 
 function renderContainers(snapshot) {
     const containers = snapshot.containers || [];
+    state.containers = containers;
     const interval = formatContainerInterval(snapshot.interval_seconds);
     if (!snapshot.enabled) {
         setText('containerCollectionState', 'optional Docker telemetry · disabled');
         setText('containerStatus', snapshot.message || 'Enable container metrics in configuration');
         renderContainerSummary(null);
+        setOverviewStatus('Container', 'Off', 'telemetry disabled', 'disabled');
         renderContainerRows([], 'Container metrics are disabled. See the setup guide to enable them safely.');
         return;
     }
@@ -631,20 +714,28 @@ function renderContainers(snapshot) {
         setText('containerCollectionState', `Docker telemetry · ${interval} collection · unavailable`);
         setText('containerStatus', snapshot.message || 'Docker metrics are unavailable');
         renderContainerSummary(null);
+        setOverviewStatus('Container', '—', 'telemetry unavailable', 'critical');
         renderContainerRows([], 'Docker metrics are enabled but unavailable. Check the configured API or socket access.');
         return;
     }
+    const unhealthy = containers.filter(isContainerUnhealthy).length;
     const updated = snapshot.collected_at ? new Date(snapshot.collected_at).toLocaleTimeString() : 'just now';
     setText('containerCollectionState', `Docker telemetry · ${interval} collection · updated ${updated}`);
-    setText('containerStatus', containers.length ? `${containers.length} running` : 'No running containers');
+    setText('containerStatus', containers.length
+        ? `${containers.length} running · ${unhealthy} unhealthy`
+        : 'No running containers');
+    setOverviewStatus(
+        'Container',
+        containers.length,
+        unhealthy > 0 ? `${unhealthy} unhealthy` : 'all workloads healthy',
+        unhealthy > 0 ? 'critical' : 'healthy'
+    );
     renderContainerSummary(containers);
     renderContainerRows(containers);
 }
 
 function formatContainerInterval(seconds) {
-    const value = Number(seconds) || 15;
-    if (value >= 60) return `${value / 60}m`;
-    return `${value}s`;
+    return formatInterval(Number(seconds) || 30);
 }
 
 function renderContainerSummary(containers) {
@@ -668,17 +759,36 @@ function renderContainerSummary(containers) {
 function renderContainerRows(containers, emptyMessage = 'No running containers returned.') {
     const body = document.getElementById('containerTable');
     if (!containers.length) {
+        updateListToggle('containerToggle', 0, listLimits.containers, false, 'Show all', 'Show top 10');
         body.replaceChildren(emptyTableRow(6, emptyMessage));
         return;
     }
+    const ordered = [...containers].sort((left, right) => {
+        const healthDifference = Number(isContainerUnhealthy(right)) - Number(isContainerUnhealthy(left));
+        if (healthDifference !== 0) return healthDifference;
+        return (Number(right.cpu_percent) || 0) - (Number(left.cpu_percent) || 0);
+    });
+    const visible = state.containersExpanded ? ordered : ordered.slice(0, listLimits.containers);
+    updateListToggle(
+        'containerToggle',
+        ordered.length,
+        listLimits.containers,
+        state.containersExpanded,
+        `Show all (${ordered.length})`,
+        'Show top 10'
+    );
     const fragment = document.createDocumentFragment();
-    containers.forEach((container) => {
+    visible.forEach((container) => {
         const row = document.createElement('tr');
+        const unhealthy = isContainerUnhealthy(container);
+        row.className = unhealthy ? 'container-row-unhealthy' : '';
         const name = cell(container.name || container.id, container.image || '');
         name.className = 'container-name';
+        const status = cell(container.status || container.state || '—');
+        status.className = unhealthy ? 'container-state unhealthy' : 'container-state';
         row.append(
             name,
-            cell(container.status || container.state || '—'),
+            status,
             cell(formatPercent(container.cpu_percent)),
             cell(`${formatBytes(container.memory_used)} / ${formatBytes(container.memory_limit)} (${formatPercent(container.memory_percent)})`),
             cell(`${formatBytes(container.net_rx_bytes)} / ${formatBytes(container.net_tx_bytes)}`),
@@ -687,6 +797,18 @@ function renderContainerRows(containers, emptyMessage = 'No running containers r
         fragment.appendChild(row);
     });
     body.replaceChildren(fragment);
+}
+
+function toggleContainers() {
+    state.containersExpanded = !state.containersExpanded;
+    renderContainerRows(state.containers);
+}
+
+function isContainerUnhealthy(container) {
+    const stateName = String(container.state || '').toLowerCase();
+    const status = String(container.status || '').toLowerCase();
+    return (stateName && stateName !== 'running') ||
+        ['unhealthy', 'restarting', 'exited', 'dead'].some((marker) => status.includes(marker));
 }
 
 async function loadAnalysis() {
@@ -706,14 +828,30 @@ async function loadAnalysis() {
 }
 
 function renderAnomalies(anomalies) {
+    state.anomalies = anomalies;
     setText('anomalyCount', anomalies.length);
     const list = document.getElementById('anomalyList');
     if (!anomalies.length) {
+        updateListToggle('anomalyToggle', 0, listLimits.anomalies, false, 'View all', 'Show important 10');
         list.replaceChildren(emptyState('No anomalies detected in the current baseline.'));
         return;
     }
+    const important = [...anomalies].sort((left, right) => {
+        const severityDifference = severityRank(right.severity) - severityRank(left.severity);
+        if (severityDifference !== 0) return severityDifference;
+        return new Date(right.ts).getTime() - new Date(left.ts).getTime();
+    });
+    const visible = state.anomaliesExpanded ? anomalies : important.slice(0, listLimits.anomalies);
+    updateListToggle(
+        'anomalyToggle',
+        anomalies.length,
+        listLimits.anomalies,
+        state.anomaliesExpanded,
+        `View all (${anomalies.length})`,
+        'Show important 10'
+    );
     const fragment = document.createDocumentFragment();
-    anomalies.forEach((anomaly) => {
+    visible.forEach((anomaly) => {
         fragment.appendChild(analysisEvent(
             anomaly.ts,
             anomaly.message,
@@ -723,6 +861,11 @@ function renderAnomalies(anomalies) {
         ));
     });
     list.replaceChildren(fragment);
+}
+
+function toggleAnomalies() {
+    state.anomaliesExpanded = !state.anomaliesExpanded;
+    renderAnomalies(state.anomalies);
 }
 
 function renderBaselines(baselines) {
@@ -789,6 +932,13 @@ function renderRules(rules) {
 function renderAlerts(events) {
     setText('alertCount', events.length);
     setText('alertNavCount', events.length);
+    const highestSeverity = events.reduce((result, event) => Math.max(result, severityRank(event.severity)), 0);
+    setOverviewStatus(
+        'Alert',
+        events.length,
+        events.length ? 'recent alert events' : 'no recent alerts',
+        highestSeverity >= 3 ? 'critical' : events.length ? 'warning' : 'healthy'
+    );
     const list = document.getElementById('alertList');
     if (!events.length) {
         list.replaceChildren(emptyState('No alert events in the retention window.'));
@@ -838,14 +988,25 @@ async function loadEvents() {
 }
 
 function renderEvents(events) {
+    state.events = events;
     setText('eventCount', events.length);
     const list = document.getElementById('eventList');
     if (!events.length) {
+        updateListToggle('eventToggle', 0, listLimits.events, false, 'View all', 'Show recent 20');
         list.replaceChildren(emptyState('No events match the current filters.'));
         return;
     }
+    const visible = state.eventsExpanded ? events : events.slice(0, listLimits.events);
+    updateListToggle(
+        'eventToggle',
+        events.length,
+        listLimits.events,
+        state.eventsExpanded,
+        `View all (${events.length})`,
+        'Show recent 20'
+    );
     const fragment = document.createDocumentFragment();
-    events.forEach((event) => {
+    visible.forEach((event) => {
         const row = document.createElement('div');
         row.className = `event-row ${String(event.level || '').toLowerCase()}`;
         const time = document.createElement('time');
@@ -864,6 +1025,11 @@ function renderEvents(events) {
         fragment.appendChild(row);
     });
     list.replaceChildren(fragment);
+}
+
+function toggleEvents() {
+    state.eventsExpanded = !state.eventsExpanded;
+    renderEvents(state.events);
 }
 
 async function clearEvents() {
@@ -912,6 +1078,58 @@ async function changePassword(event) {
     } finally {
         button.disabled = false;
     }
+}
+
+function setOverviewStatus(kind, value, detail, status) {
+    const card = document.getElementById(`overview${kind}Card`);
+    if (card) card.dataset.state = status;
+    setText(`overview${kind}Value`, value);
+    setText(`overview${kind}Detail`, detail);
+}
+
+function updateListToggle(id, total, limit, expanded, collapsedLabel, expandedLabel) {
+    const button = document.getElementById(id);
+    if (!button) return;
+    button.hidden = total <= limit;
+    button.disabled = total <= limit;
+    button.setAttribute('aria-expanded', String(expanded));
+    button.textContent = expanded ? expandedLabel : collapsedLabel;
+}
+
+function severityRank(severity) {
+    switch (String(severity || '').toLowerCase()) {
+    case 'critical':
+    case 'error':
+        return 3;
+    case 'warning':
+    case 'warn':
+        return 2;
+    case 'info':
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+function serviceStateRank(activeState) {
+    switch (String(activeState || '').toLowerCase()) {
+    case 'failed':
+        return 3;
+    case 'inactive':
+    case 'deactivating':
+        return 2;
+    case 'activating':
+    case 'unknown':
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+function formatInterval(seconds) {
+    const value = Number(seconds) || 30;
+    if (value >= 60) return `${value / 60}m`;
+    return `${value}s`;
 }
 
 function setText(id, value) {

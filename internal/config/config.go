@@ -133,7 +133,7 @@ func envIntRange(key string, fallback, minimum, maximum int) (int, error) {
 
 func parseContainerInterval(raw string) (time.Duration, error) {
 	if strings.TrimSpace(raw) == "" {
-		return 15 * time.Second, nil
+		return 30 * time.Second, nil
 	}
 	interval, err := time.ParseDuration(strings.TrimSpace(raw))
 	if err != nil {

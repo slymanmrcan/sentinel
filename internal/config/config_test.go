@@ -60,6 +60,17 @@ func TestLoadRejectsInvalidSystemdUnit(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsContainerIntervalToThirtySeconds(t *testing.T) {
+	t.Setenv("CONTAINER_COLLECTION_INTERVAL", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ContainerInterval != 30*time.Second {
+		t.Fatalf("ContainerInterval = %v, want 30s", cfg.ContainerInterval)
+	}
+}
+
 func TestLoadRejectsSystemdLogLineLimit(t *testing.T) {
 	t.Setenv("SYSTEMD_LOG_LINES", "1000")
 	if _, err := Load(); err == nil {

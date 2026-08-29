@@ -56,6 +56,19 @@ func (s *Server) handleSystemServices(w http.ResponseWriter, r *http.Request, _ 
 	writeJSON(w, http.StatusOK, s.collector.SystemServices(r.Context()))
 }
 
+func (s *Server) handleSystemServiceLogs(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+	logs, err := s.collector.SystemServiceLogs(r.Context(), r.PathValue("unit"))
+	if err != nil {
+		if errors.Is(err, monitor.ErrSystemdUnitNotConfigured) {
+			writeError(w, http.StatusNotFound, "systemd unit is not configured")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load systemd journal")
+		return
+	}
+	writeJSON(w, http.StatusOK, logs)
+}
+
 func (s *Server) handleContainers(w http.ResponseWriter, _ *http.Request, _ auth.Principal) {
 	writeJSON(w, http.StatusOK, s.collector.Containers())
 }

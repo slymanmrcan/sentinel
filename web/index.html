@@ -59,7 +59,7 @@
                         <span>Containers</span>
                         <select id="containerInterval" aria-label="Container collection interval">
                             <option value="15">15s</option>
-                            <option value="30">30s</option>
+                            <option value="30" selected>30s</option>
                             <option value="45">45s</option>
                             <option value="60">1m</option>
                             <option value="120">2m</option>
@@ -74,53 +74,46 @@
                 <section class="dashboard-section" id="overview">
                     <div class="section-title">
                         <h1>Live overview</h1>
-                        <span>10s collection · 2s refresh</span>
+                        <span id="overviewRefreshState">host metrics · loading</span>
                     </div>
 
-                    <div class="metric-grid">
-                        <article class="metric-card metric-card-primary" id="cpuCard">
+                    <div class="overview-resource-grid">
+                        <article class="metric-card" id="cpuCard">
                             <div class="metric-head"><span>CPU usage</span><em id="cpuState">Normal</em></div>
                             <strong class="metric-value" id="cpuValue">0.0%</strong>
                             <div class="metric-track"><i id="cpuBar"></i></div>
                             <div class="metric-meta"><span>cores <b id="cpuCores">—</b></span><span>temp <b id="cpuTemp">—</b></span></div>
                         </article>
-                        <article class="metric-card metric-card-primary" id="memoryCard">
+                        <article class="metric-card" id="memoryCard">
                             <div class="metric-head"><span>Memory</span><em id="memoryState">Normal</em></div>
                             <strong class="metric-value" id="memoryValue">0.0%</strong>
                             <div class="metric-track"><i id="memoryBar"></i></div>
                             <div class="metric-meta"><span>used <b id="memoryUsed">—</b></span><span>total <b id="memoryTotal">—</b></span></div>
                         </article>
-                        <article class="metric-card metric-card-primary" id="diskCard">
+                        <article class="metric-card" id="diskCard">
                             <div class="metric-head"><span>Disk</span><em id="diskState">Normal</em></div>
                             <strong class="metric-value" id="diskValue">0.0%</strong>
                             <div class="metric-track"><i id="diskBar"></i></div>
                             <div class="metric-meta"><span>used <b id="diskUsed">—</b></span><span>total <b id="diskTotal">—</b></span></div>
                         </article>
-                        <article class="metric-card metric-card-primary" id="swapCard">
-                            <div class="metric-head"><span>Swap</span><em id="swapState">Normal</em></div>
-                            <strong class="metric-value" id="swapValue">0.0%</strong>
-                            <div class="metric-track"><i id="swapBar"></i></div>
-                            <div class="metric-meta"><span>used <b id="swapUsed">—</b></span><span>total <b id="swapTotal">—</b></span></div>
-                        </article>
-                        <article class="metric-card metric-card-secondary">
+                        <article class="metric-card">
                             <div class="metric-head"><span>Load average</span><em>1 / 5 / 15m</em></div>
                             <strong class="metric-value metric-value-small" id="loadValue">0.00 · 0.00 · 0.00</strong>
                             <div class="metric-track"><i id="loadBar"></i></div>
                             <div class="metric-meta"><span>1m normalized</span><span id="loadHint">per core —</span></div>
                         </article>
-                        <article class="metric-card metric-card-secondary" title="Host network traffic across all interfaces since the last boot">
-                            <div class="metric-head"><span>Network traffic</span><em>since boot</em></div>
-                            <strong class="metric-value metric-value-small" id="networkTotal">0 B</strong>
-                            <div class="metric-track"><i id="networkBar"></i></div>
-                            <div class="metric-meta"><span>in <b id="networkInTotal">0 B</b></span><span>out <b id="networkOutTotal">0 B</b></span></div>
-                            <div class="metric-live"><span>live in <b id="networkInRate">0 B/s</b></span><span>out <b id="networkOutRate">0 B/s</b></span></div>
-                        </article>
-                        <article class="metric-card metric-card-secondary">
-                            <div class="metric-head"><span>Disk I/O</span><em>I/O</em></div>
-                            <strong class="metric-value metric-value-small" id="diskReadValue">0 B/s</strong>
-                            <div class="metric-track"><i id="diskIOBar"></i></div>
-                            <div class="metric-meta"><span>write <b id="diskWriteValue">0 B/s</b></span><span>live throughput</span></div>
-                        </article>
+                    </div>
+
+                    <div class="overview-status-grid" aria-label="Operational summary">
+                        <a class="panel overview-status-card" id="overviewContainerCard" href="#containers" data-state="unknown">
+                            <span>Containers</span><strong id="overviewContainerValue">—</strong><small id="overviewContainerDetail">checking telemetry</small>
+                        </a>
+                        <a class="panel overview-status-card" id="overviewServiceCard" href="#services" data-state="unknown">
+                            <span>Services</span><strong id="overviewServiceValue">—</strong><small id="overviewServiceDetail">checking systemd</small>
+                        </a>
+                        <a class="panel overview-status-card" id="overviewAlertCard" href="#alerts" data-state="unknown">
+                            <span>Alerts</span><strong id="overviewAlertValue">—</strong><small id="overviewAlertDetail">checking recent alerts</small>
+                        </a>
                     </div>
                 </section>
 
@@ -128,6 +121,27 @@
                     <div class="section-title">
                         <h2>Performance history</h2>
                         <span id="sampleCount">0 samples · 1h window</span>
+                    </div>
+                    <div class="secondary-metric-grid">
+                        <article class="metric-card" id="swapCard">
+                            <div class="metric-head"><span>Swap</span><em id="swapState">Normal</em></div>
+                            <strong class="metric-value metric-value-small" id="swapValue">0.0%</strong>
+                            <div class="metric-track"><i id="swapBar"></i></div>
+                            <div class="metric-meta"><span>used <b id="swapUsed">—</b></span><span>total <b id="swapTotal">—</b></span></div>
+                        </article>
+                        <article class="metric-card" title="Host network traffic across all interfaces since the last boot">
+                            <div class="metric-head"><span>Network traffic</span><em>since boot</em></div>
+                            <strong class="metric-value metric-value-small" id="networkTotal">0 B</strong>
+                            <div class="metric-track"><i id="networkBar"></i></div>
+                            <div class="metric-meta"><span>in <b id="networkInTotal">0 B</b></span><span>out <b id="networkOutTotal">0 B</b></span></div>
+                            <div class="metric-live"><span>live in <b id="networkInRate">0 B/s</b></span><span>out <b id="networkOutRate">0 B/s</b></span></div>
+                        </article>
+                        <article class="metric-card">
+                            <div class="metric-head"><span>Disk I/O</span><em>I/O</em></div>
+                            <strong class="metric-value metric-value-small" id="diskReadValue">0 B/s</strong>
+                            <div class="metric-track"><i id="diskIOBar"></i></div>
+                            <div class="metric-meta"><span>write <b id="diskWriteValue">0 B/s</b></span><span>live throughput</span></div>
+                        </article>
                     </div>
                     <div class="performance-grid">
                         <article class="panel chart-panel">
@@ -170,7 +184,7 @@
                 <section class="dashboard-section" id="containers">
                     <div class="section-title">
                         <h2>Containers</h2>
-                        <span id="containerCollectionState">optional Docker telemetry · 15s collection</span>
+                        <span id="containerCollectionState">optional Docker telemetry · loading</span>
                     </div>
                     <div class="container-summary-grid" aria-label="Container totals">
                         <article class="panel compact-stat"><span>Running</span><strong id="containerCount">—</strong><small>containers</small></article>
@@ -181,7 +195,10 @@
                     <article class="panel container-panel">
                         <div class="panel-heading">
                             <h3>Running workloads</h3>
-                            <span class="container-status" id="containerStatus">Checking configuration…</span>
+                            <div class="panel-heading-actions">
+                                <span class="container-status" id="containerStatus">Checking configuration…</span>
+                                <button class="text-action" id="containerToggle" type="button" aria-controls="containerTable" aria-expanded="false" hidden>Show all</button>
+                            </div>
                         </div>
                         <div class="table-scroll">
                             <table class="container-table">
@@ -201,7 +218,10 @@
                         <article class="panel">
                             <div class="panel-heading">
                                 <h3>Detected anomalies <b class="count-badge" id="anomalyCount">0</b></h3>
-                                <a class="text-action" href="/api/export/anomalies.csv" download>Export</a>
+                                <div class="panel-heading-actions">
+                                    <button class="text-action" id="anomalyToggle" type="button" aria-controls="anomalyList" aria-expanded="false" hidden>View all</button>
+                                    <a class="text-action" href="/api/export/anomalies.csv" download>Export</a>
+                                </div>
                             </div>
                             <div class="event-list" id="anomalyList">
                                 <div class="empty-state">Building a statistical baseline…</div>
@@ -242,7 +262,7 @@
                 <section class="dashboard-section" id="services">
                     <div class="section-title">
                         <h2>System services</h2>
-                        <span id="serviceCollectionState">systemd status · recent journal</span>
+                        <span id="serviceCollectionState">systemd status · loading</span>
                     </div>
                     <div class="service-summary-grid" aria-label="System service totals">
                         <article class="panel compact-stat"><span>Configured</span><strong id="serviceCount">—</strong><small>allowlisted units</small></article>
@@ -291,6 +311,7 @@
                                     <option value="WARN">Warning</option>
                                     <option value="ERROR">Error</option>
                                 </select>
+                                <button class="text-action" id="eventToggle" type="button" aria-controls="eventList" aria-expanded="false" hidden>View all</button>
                                 <a class="text-action" href="/api/export/logs.csv" download>Export</a>
                                 <button class="clear-button" id="clearEventsButton" type="button">Clear</button>
                             </div>

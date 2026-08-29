@@ -1,8 +1,15 @@
 package httpapi
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/slymanmrcan/sentinel/internal/auth"
+	"github.com/slymanmrcan/sentinel/internal/config"
+	"github.com/slymanmrcan/sentinel/internal/monitor"
 )
 
 func TestNormalizeLogInput(t *testing.T) {
@@ -33,5 +40,22 @@ func TestNormalizeLogInput(t *testing.T) {
 				t.Fatalf("normalizeLogInput() = %#v, want %#v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestSystemServiceLogsEndpointRejectsUnconfiguredUnit(t *testing.T) {
+	collector := monitor.New(nil, config.Config{SystemdUnits: []string{"ssh.service"}})
+	server := &Server{collector: collector}
+	request := httptest.NewRequest(http.MethodGet, "/api/system/services/docker.service/logs", nil)
+	request = request.WithContext(context.Background())
+	request.SetPathValue("unit", "docker.service")
+	recorder := httptest.NewRecorder()
+
+	server.handleSystemServiceLogs(recorder, request, auth.Principal{})
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body = %s", recorder.Code, http.StatusNotFound, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "not configured") {
+		t.Fatalf("body = %q, want configured-unit rejection", recorder.Body.String())
 	}
 }

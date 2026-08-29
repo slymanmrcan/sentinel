@@ -1,10 +1,10 @@
 # Container metrics
 
 Sentinel keeps container telemetry optional and disabled by default. When
-enabled, the dashboard reads the Docker Engine API every 15 seconds and shows
+enabled, the dashboard reads the Docker Engine API every 30 seconds and shows
 running container CPU, memory working set, network counters and PID count.
 The initial interval can be configured with
-`CONTAINER_COLLECTION_INTERVAL=15s`; supported values are `15s`, `30s`, `45s`,
+`CONTAINER_COLLECTION_INTERVAL=30s`; supported values are `15s`, `30s`, `45s`,
 `1m`, and `2m`.
 
 ## Recommended setup
@@ -63,7 +63,7 @@ docker compose -f docker-compose.yml -f docker-compose.containers.yml logs --tai
   count. Sentinel takes fast one-shot Docker samples and keeps the previous
   counter itself, avoiding Docker's per-container two-point wait. CPU is `0%`
   for the first collection after Sentinel starts and becomes an interval value
-  on the next 15-second collection. A multi-core container can exceed 100%.
+  on the next collection. A multi-core container can exceed 100%.
 - Memory subtracts `inactive_file` on cgroup v2 or
   `total_inactive_file` on cgroup v1, matching Docker CLI working-set display.
 - Network RX/TX are cumulative counters summed across the container's network

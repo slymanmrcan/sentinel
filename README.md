@@ -101,7 +101,7 @@ reverse proxy arkasında tutun.
 | `HOST_SYS` | boş | Host sysfs mount yolu |
 | `NETWORK_INTERFACES` | boş | Sayaçlara dahil edilecek virgülle ayrılmış arayüzler |
 | `CONTAINER_METRICS_ENABLED` | `false` | Docker container telemetrisini açar |
-| `CONTAINER_COLLECTION_INTERVAL` | `15s` | İlk container ölçüm aralığı: `15s`, `30s`, `45s`, `1m`, `2m` |
+| `CONTAINER_COLLECTION_INTERVAL` | `30s` | İlk container ölçüm aralığı: `15s`, `30s`, `45s`, `1m`, `2m` |
 | `CONTAINER_API_URL` | boş | Korunan Docker API/proxy adresi |
 | `DOCKER_SOCKET` | `/var/run/docker.sock` | API URL yoksa kullanılan Unix socket |
 | `SYSTEMD_UNITS` | boş | Durumu ve journal özeti okunacak virgülle ayrılmış `.service` allowlist'i |
@@ -142,7 +142,8 @@ erişilemiyor ve tüm istekler güvenilir proxy’den geliyorsa kullanılmalıd�
 | `GET` | `/api/alerts/events` | Evet | Alert geçmişi |
 | `GET/POST/DELETE` | `/api/logs` | Evet | Event akışı |
 | `GET` | `/api/system/details` | Evet | Process, port, kernel |
-| `GET` | `/api/system/services` | Evet | Allowlist'teki systemd servisleri ve kısa journal özeti |
+| `GET` | `/api/system/services` | Evet | Allowlist'teki systemd servislerinin cache'li status bilgisi |
+| `GET` | `/api/system/services/{unit}/logs` | Evet | Allowlist'teki tek servis için on-demand journal özeti |
 | `GET` | `/api/containers` | Evet | Opsiyonel container snapshot'ı |
 | `PUT` | `/api/containers/settings` | Evet + CSRF | Container ölçüm aralığını değiştirir |
 | `GET` | `/api/export/*.csv` | Evet | CSV export |
@@ -164,11 +165,13 @@ SYSTEMD_UNITS=fail2ban.service,ssh.service,docker.service
 SYSTEMD_LOG_LINES=8
 ```
 
-Services bölümü active/failed durumu, enable durumu, `Restart=` politikası,
-mevcut systemd manager oturumundaki restart sayısı ve son journal kayıtlarını
-gösterir. Doğrudan hostta çalıştırıldığında `systemctl` ve `journalctl` PATH'te
-olmalıdır. Docker image bu araçları içerir; Compose kurulumu mevcut read-only
-host root mount'u üzerinden host system bus ve journal'ını okur. Erişim yoksa
+Services bölümü active/failed durumu, enable durumu, `Restart=` politikası ve
+mevcut systemd manager oturumundaki restart sayısını gösterir. Status sorgusu
+60 saniye cache'lenir. Son journal kayıtları yalnız servis kartındaki alan
+açıldığında ayrı endpoint'ten okunur. Doğrudan hostta çalıştırıldığında
+`systemctl` ve `journalctl` PATH'te olmalıdır. Docker image bu araçları içerir;
+Compose kurulumu mevcut read-only host root mount'u üzerinden host system bus
+ve journal'ını okur. Erişim yoksa
 API boş/yanıltıcı durum üretmek yerine özelliği `unavailable` olarak işaretler.
 
 ## Container telemetrisi
@@ -381,7 +384,8 @@ SYSTEMD_LOG_LINES=8
 ```
 
 The Services section reports active/failed state, enablement, the configured
-restart policy, restart count, and a bounded recent journal excerpt. It is
+restart policy, and restart count from a 60-second status cache. A bounded
+recent journal excerpt is loaded on demand for one allowlisted unit. It is
 read-only and exposes no service-control endpoint.
 
 The network card shows live inbound/outbound throughput and the inbound,
