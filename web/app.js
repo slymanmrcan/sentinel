@@ -6,7 +6,7 @@ const state = {
     latestMetric: null,
     logSearchTimer: null,
     containerRefreshTimer: null,
-	containerIntervalSeconds: 15,
+	containerIntervalSeconds: 30,
 	systemServicesLoading: false
 };
 
@@ -26,12 +26,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadEvents()
     ]);
 
-    window.setInterval(loadRealtime, 2000);
-    window.setInterval(loadSystemDetails, 15000);
-	window.setInterval(loadSystemServices, 15000);
-    window.setInterval(loadAnalysis, 30000);
-    window.setInterval(loadAlerts, 30000);
-    window.setInterval(loadEvents, 10000);
+    window.setInterval(loadRealtime, 30000);
+    window.setInterval(loadSystemDetails, 60000);
+    window.setInterval(loadSystemServices, 60000);
+    window.setInterval(loadAnalysis, 60000);
+    window.setInterval(loadAlerts, 60000);
+    window.setInterval(loadEvents, 30000);
 });
 
 function bindUI() {
