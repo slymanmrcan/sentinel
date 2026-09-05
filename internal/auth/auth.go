@@ -8,10 +8,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -33,6 +36,10 @@ var dummyHash = []byte("$2a$10$7EqJtq98hPqEX7fNZaFWoO5YtO6YQYQzUqFQfYyJqT0pM6GCr
 type Service struct {
 	store *store.Store
 	cfg   config.Config
+	// Serialize login checks so concurrent failures cannot bypass the lockout.
+	// TryLock rejects excess work instead of queuing expensive password checks.
+	loginMu sync.Mutex
+	budget  loginBudget
 }
 
 type Principal struct {
@@ -131,18 +138,27 @@ func (s *Service) bootstrapAdmin(ctx context.Context) error {
 }
 
 func (s *Service) Login(ctx context.Context, r *http.Request, login, password string) (LoginResult, string, error) {
+	if !s.loginMu.TryLock() {
+		return LoginResult{}, "", &LockoutError{Remaining: time.Second}
+	}
+	defer s.loginMu.Unlock()
+
 	login = strings.ToLower(strings.TrimSpace(login))
 	if login == "" || password == "" {
 		return LoginResult{}, "", ErrInvalidCredentials
 	}
 
-	identifier := s.clientIP(r) + ":" + login
+	// The username is attacker-controlled. All usernames share the IP lockout.
+	identifier := "ip:" + s.clientIP(r)
 	remaining, err := s.store.LockoutRemaining(ctx, identifier)
 	if err != nil {
 		return LoginResult{}, "", fmt.Errorf("read login lockout: %w", err)
 	}
 	if remaining > 0 {
 		return LoginResult{}, "", &LockoutError{Remaining: remaining}
+	}
+	if wait := s.budget.take(time.Now()); wait > 0 {
+		return LoginResult{}, "", &LockoutError{Remaining: wait}
 	}
 
 	user, lookupErr := s.store.UserByLogin(ctx, login)
@@ -151,7 +167,13 @@ func (s *Service) Login(ctx context.Context, r *http.Request, login, password st
 		hash = []byte(user.PasswordHash)
 	}
 	if bcrypt.CompareHashAndPassword(hash, []byte(password)) != nil || lookupErr != nil {
-		_ = s.store.RegisterLoginFailure(ctx, identifier, maxLoginFailures, loginLockout)
+		// A client disconnect after password verification must not erase a
+		// failed attempt. Bound the write independently of the request lifetime.
+		failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		if err := s.store.RegisterLoginFailure(failureCtx, identifier, maxLoginFailures, loginLockout); err != nil {
+			return LoginResult{}, "", fmt.Errorf("register login failure: %w", err)
+		}
 		return LoginResult{}, "", ErrInvalidCredentials
 	}
 	if err := s.store.ClearLoginFailures(ctx, identifier); err != nil {
@@ -294,14 +316,22 @@ func (s *Service) ClientOriginAllowed(r *http.Request) bool {
 
 func (s *Service) clientIP(r *http.Request) string {
 	if s.cfg.TrustProxyHeaders {
-		if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]); forwarded != "" {
-			return forwarded
+		// Nginx's $proxy_add_x_forwarded_for appends the connecting client's IP.
+		// Earlier entries can come from the client and must not select a bucket.
+		forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
+		parts := strings.Split(forwarded, ",")
+		if ip, err := netip.ParseAddr(strings.TrimSpace(parts[len(parts)-1])); err == nil && ip.Zone() == "" {
+			return ip.Unmap().String()
 		}
 	}
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
+	remote := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(remote); err == nil {
+		remote = host
 	}
-	return r.RemoteAddr
+	if ip, err := netip.ParseAddr(remote); err == nil {
+		return ip.Unmap().String()
+	}
+	return remote
 }
 
 func safeUser(user store.User) store.User {
@@ -337,5 +367,9 @@ type LockoutError struct {
 }
 
 func (e *LockoutError) Error() string {
-	return fmt.Sprintf("too many failed attempts; try again in %d minute(s)", int(e.Remaining.Minutes())+1)
+	return fmt.Sprintf("too many sign-in attempts; try again in %d second(s)", e.RetryAfterSeconds())
+}
+
+func (e *LockoutError) RetryAfterSeconds() int {
+	return max(1, int(math.Ceil(e.Remaining.Seconds())))
 }

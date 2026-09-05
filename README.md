@@ -74,7 +74,15 @@ sonraki restartta tekrar `.env` değerine döner.
 - Cookie `HttpOnly` ve `SameSite=Strict` olarak ayarlanır.
 - Sunucuda session token’ın kendisi değil SHA-256 özeti tutulur.
 - Yazma istekleri session’a bağlı `X-CSRF-Token` ister.
-- Beş hatalı girişten sonra login + IP çifti 15 dakika kilitlenir.
+- Aynı IP'den beş hatalı girişten sonra, kullanıcı adından bağımsız olarak
+  15 dakika kilit uygulanır. Kilit restart sonrası da korunur; süresi dolunca
+  veya başarılı girişte hata sayacı sıfırlanır.
+- Aynı anda bir giriş işlemi yürütülür; diğer girişler kuyrukta bekletilmeden
+  `429` alır. Tüm IP'ler için toplam parola kontrol bütçesi ilk anda 10 denemedir,
+  her 3 saniyede bir deneme yenilenir (sürekli trafikte dakikada 20).
+  Bu kısa süreli toplam bütçe restart ile sıfırlanır.
+- Limit yanıtları `Retry-After` başlığında bekleme süresini saniye olarak verir.
+  Süresi dolmuş ve bir günden eski giriş denemeleri saatlik temizlenir.
 - Parola bcrypt ile hashlenir.
 - Parola uzunluğu 8 karakter ile bcrypt sınırı olan 72 byte arasındadır.
 - Parola değişimi kullanıcının tüm aktif oturumlarını kapatır.
@@ -122,6 +130,17 @@ AUTH_ALLOWED_ORIGINS=https://sentinel.example.com
 
 `TRUST_PROXY_HEADERS=true` alternatifi yalnız Sentinel’e doğrudan internetten
 erişilemiyor ve tüm istekler güvenilir proxy’den geliyorsa kullanılmalıdır.
+
+Doğrudan Nginx Proxy Manager arkasında çalıştırırken `TRUST_PROXY_HEADERS=true`
+ayarlayın; aksi halde bütün ziyaretçiler NPM'nin IP'sini paylaşır ve bir
+saldırganın kilidi sizin girişinizi de engelleyebilir. Standart NPM
+`X-Forwarded-For` sonuna bağlanan istemcinin IP'sini ekler. Sentinel yalnızca
+bu son adresi kullanır; istemcinin eklediği önceki adreslere güvenmez. NPM'nin
+önünde Cloudflare/CDN veya başka proxy varsa bu adres o proxy'ye ait olabilir;
+önce gerçek istemci IP'sinin NPM'de güvenilir biçimde çözüldüğünü doğrulayın.
+Özel NPM ayarları bu başlığı değiştirebilir. Compose host portu yayınlamaz;
+aynı Docker ağından doğrudan erişen istemciler de bu güven sınırının içindedir.
+
 `AUTH_COOKIE_SECURE` yalnız cookie güvenliğini yönetir; origin doğrulamasının
 şemasını değiştirmez.
 
@@ -317,12 +336,24 @@ as fallbacks when the new variables are absent.
 - HttpOnly, SameSite=Strict session cookie
 - Session-bound CSRF token for state-changing requests
 - bcrypt password hashing
-- 15-minute lockout after five failed attempts per login and client IP
+- Persistent 15-minute lockout after five failed attempts per client IP,
+  across all usernames; expired counters and successful sign-ins start fresh
+- One in-flight login; excess concurrent requests receive `429` immediately
+- Global password-check budget: burst of 10, refilling once every 3 seconds
+  (20/minute sustained); this short-term budget resets on restart
+- `Retry-After` on rate limits; hourly cleanup of expired attempts older than a day
 - Password changes revoke all sessions
 - Public `/healthz`; authenticated dashboard and API
 
 Set `AUTH_COOKIE_SECURE=true` only when the browser reaches Sentinel over
 HTTPS. Keep network deployments behind an HTTPS reverse proxy.
+
+For a single trusted Nginx Proxy Manager hop, set `TRUST_PROXY_HEADERS=true`.
+Otherwise all visitors share the proxy IP and its lockout. Sentinel reads the
+rightmost `X-Forwarded-For` address appended by standard NPM, ignoring spoofable
+prefixes. Only enable this when direct access is restricted to trusted callers.
+With an additional CDN/proxy before NPM, verify trusted real-IP handling there
+first; otherwise the CDN/proxy address is rate-limited instead of the visitor.
 
 When the proxy rewrites the upstream Host header, set the public browser origin
 explicitly:

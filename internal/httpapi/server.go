@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -175,6 +176,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		var lockout *auth.LockoutError
 		switch {
 		case errors.As(err, &lockout):
+			w.Header().Set("Retry-After", strconv.Itoa(lockout.RetryAfterSeconds()))
 			writeError(w, http.StatusTooManyRequests, lockout.Error())
 		case errors.Is(err, auth.ErrInvalidCredentials):
 			s.log(r.Context(), "WARN", "Failed sign-in attempt", "auth")

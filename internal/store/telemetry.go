@@ -255,6 +255,7 @@ func (s *Store) Prune(ctx context.Context) error {
 		`DELETE FROM anomalies WHERE ts < now() - INTERVAL 30 DAY`,
 		`DELETE FROM alert_events WHERE ts < now() - INTERVAL 30 DAY`,
 		`DELETE FROM sessions WHERE expires_at <= now()`,
+		`DELETE FROM login_attempts WHERE last_attempt < now() - INTERVAL 1 DAY AND locked_until <= now()`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {

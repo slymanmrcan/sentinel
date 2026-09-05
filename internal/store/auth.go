@@ -125,26 +125,26 @@ func (s *Store) LockoutRemaining(ctx context.Context, identifier string) (time.D
 }
 
 func (s *Store) RegisterLoginFailure(ctx context.Context, identifier string, maxFailures int, lockout time.Duration) error {
-	var failCount int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT fail_count FROM login_attempts WHERE identifier = ?`,
-		identifier,
-	).Scan(&failCount)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
+	now := time.Now()
+	initialLock := time.Time{}
+	if maxFailures <= 1 {
+		initialLock = now.Add(lockout)
 	}
-	failCount++
-	lockedUntil := time.Time{}
-	if failCount >= maxFailures {
-		lockedUntil = time.Now().Add(lockout)
-	}
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM login_attempts WHERE identifier = ?`, identifier); err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO login_attempts (identifier, fail_count, locked_until, last_attempt) VALUES (?, ?, ?, ?)`,
-		identifier, failCount, lockedUntil, time.Now(),
-	)
+	// One statement avoids a delete/insert gap and lost increments. Expired
+	// lockouts and failures outside the observation window start a fresh count.
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO login_attempts (identifier, fail_count, locked_until, last_attempt)
+		VALUES (?, 1, ?, ?)
+		ON CONFLICT (identifier) DO UPDATE SET
+			fail_count = CASE
+				WHEN login_attempts.last_attempt <= ? THEN 1
+				ELSE login_attempts.fail_count + 1 END,
+			locked_until = CASE
+				WHEN (CASE WHEN login_attempts.last_attempt <= ? THEN 1
+					ELSE login_attempts.fail_count + 1 END) >= ? THEN ?
+				ELSE ? END,
+			last_attempt = excluded.last_attempt
+	`, identifier, initialLock, now, now.Add(-lockout), now.Add(-lockout), maxFailures, now.Add(lockout), time.Time{})
 	return err
 }
 
