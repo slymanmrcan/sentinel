@@ -14,6 +14,7 @@ import (
 
 	"github.com/slymanmrcan/sentinel/internal/auth"
 	"github.com/slymanmrcan/sentinel/internal/monitor"
+	"github.com/slymanmrcan/sentinel/internal/store"
 )
 
 const maxLogBodyBytes = 16 << 10
@@ -193,9 +194,9 @@ func (s *Server) handleExportMetrics(w http.ResponseWriter, r *http.Request, _ a
 		[]string{"timestamp", "cpu_percent", "memory_percent", "disk_percent", "swap_percent", "load_1", "net_rx_bps", "net_tx_bps"})
 	for _, metric := range metrics {
 		_ = writer.Write([]string{
-			metric.Timestamp.Format(time.RFC3339), number(metric.CPUPercent), number(metric.RAMPercent),
-			number(metric.DiskPercent), number(metric.SwapPercent), number(metric.Load1),
-			number(metric.NetRxBps), number(metric.NetTxBps),
+			metric.Timestamp.Format(time.RFC3339), metricNumber(metric, "cpu", metric.CPUPercent), metricNumber(metric, "memory", metric.RAMPercent),
+			metricNumber(metric, "disk", metric.DiskPercent), metricNumber(metric, "swap", metric.SwapPercent), metricNumber(metric, "load", metric.Load1),
+			metricNumber(metric, "network", metric.NetRxBps), metricNumber(metric, "network", metric.NetTxBps),
 		})
 	}
 	writer.Flush()
@@ -263,4 +264,13 @@ func csvResponse(w http.ResponseWriter, filename string, header []string) *csv.W
 
 func number(value float64) string {
 	return strconv.FormatFloat(value, 'f', 4, 64)
+}
+
+func metricNumber(metric store.Metric, field string, value float64) string {
+	for _, missing := range metric.Unavailable {
+		if field == missing {
+			return ""
+		}
+	}
+	return number(value)
 }

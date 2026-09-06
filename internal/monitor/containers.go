@@ -26,6 +26,7 @@ var ErrInvalidContainerInterval = errors.New("container interval must be 15, 30,
 type ContainerSnapshot struct {
 	Enabled     bool              `json:"enabled"`
 	Available   bool              `json:"available"`
+	Partial     bool              `json:"partial"`
 	Message     string            `json:"message,omitempty"`
 	CollectedAt *time.Time        `json:"collected_at,omitempty"`
 	IntervalSec int               `json:"interval_seconds"`
@@ -42,18 +43,21 @@ func validContainerInterval(seconds int) bool {
 }
 
 type ContainerMetric struct {
-	ID            string  `json:"id"`
-	Name          string  `json:"name"`
-	Image         string  `json:"image"`
-	State         string  `json:"state"`
-	Status        string  `json:"status"`
-	CPUPercent    float64 `json:"cpu_percent"`
-	MemoryUsed    uint64  `json:"memory_used"`
-	MemoryLimit   uint64  `json:"memory_limit"`
-	MemoryPercent float64 `json:"memory_percent"`
-	NetRxBytes    uint64  `json:"net_rx_bytes"`
-	NetTxBytes    uint64  `json:"net_tx_bytes"`
-	PIDs          uint64  `json:"pids"`
+	StatsAvailable bool    `json:"stats_available"`
+	CPUAvailable   bool    `json:"cpu_available"`
+	StatsMessage   string  `json:"stats_message,omitempty"`
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	Image          string  `json:"image"`
+	State          string  `json:"state"`
+	Status         string  `json:"status"`
+	CPUPercent     float64 `json:"cpu_percent"`
+	MemoryUsed     uint64  `json:"memory_used"`
+	MemoryLimit    uint64  `json:"memory_limit"`
+	MemoryPercent  float64 `json:"memory_percent"`
+	NetRxBytes     uint64  `json:"net_rx_bytes"`
+	NetTxBytes     uint64  `json:"net_tx_bytes"`
+	PIDs           uint64  `json:"pids"`
 }
 
 type containerSource interface {
@@ -127,21 +131,34 @@ func newContainerSource(cfg config.Config) (containerSource, bool) {
 
 func (s *dockerContainerSource) Collect(ctx context.Context) ([]ContainerMetric, error) {
 	var containers []dockerContainer
-	if err := s.getJSON(ctx, "/containers/json?all=false", &containers); err != nil {
+	if err := s.getJSON(ctx, "/containers/json?all=true", &containers); err != nil {
 		return nil, fmt.Errorf("list containers: %w", err)
 	}
-	if len(containers) > 64 {
-		containers = containers[:64]
-	}
+	// Keep every container's state, even when its stats cannot be sampled.
+	sort.Slice(containers, func(i, j int) bool { return containers[i].ID < containers[j].ID })
 	statsByIndex := make([]dockerStats, len(containers))
 	errorsByIndex := make([]error, len(containers))
 	semaphore := make(chan struct{}, 8)
 	var waitGroup sync.WaitGroup
+	statsCount := 0
 	for index, container := range containers {
+		if container.State != "running" {
+			continue
+		}
+		if statsCount >= 64 {
+			errorsByIndex[index] = fmt.Errorf("stats collection limited to 64 running containers")
+			continue
+		}
+		statsCount++
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			semaphore <- struct{}{}
+			select {
+			case semaphore <- struct{}{}:
+			case <-ctx.Done():
+				errorsByIndex[index] = ctx.Err()
+				return
+			}
 			defer func() { <-semaphore }()
 			var stats dockerStats
 			path := "/containers/" + url.PathEscape(container.ID) + "/stats?stream=false&one-shot=true"
@@ -153,13 +170,18 @@ func (s *dockerContainerSource) Collect(ctx context.Context) ([]ContainerMetric,
 		}()
 	}
 	waitGroup.Wait()
-	if err := errors.Join(errorsByIndex...); err != nil {
-		return nil, err
-	}
 	result := make([]ContainerMetric, len(containers))
 	s.previousMu.Lock()
 	nextPrevious := make(map[string]dockerCPUStats, len(containers))
 	for index, container := range containers {
+		if container.State != "running" || errorsByIndex[index] != nil {
+			result[index] = containerMetricFromDocker(container, dockerStats{})
+			result[index].StatsAvailable = false
+			if errorsByIndex[index] != nil {
+				result[index].StatsMessage = "Stats unavailable"
+			}
+			continue
+		}
 		stats := statsByIndex[index]
 		previous, ok := s.previous[container.ID]
 		if !ok {
@@ -167,6 +189,7 @@ func (s *dockerContainerSource) Collect(ctx context.Context) ([]ContainerMetric,
 		}
 		stats.PreCPUStats = previous
 		result[index] = containerMetricFromDocker(container, stats)
+		result[index].CPUAvailable = ok && stats.CPUStats.CPUUsage.TotalUsage >= previous.CPUUsage.TotalUsage && stats.CPUStats.SystemCPUUsage > previous.SystemCPUUsage
 		nextPrevious[container.ID] = stats.CPUStats
 	}
 	s.previous = nextPrevious
@@ -177,7 +200,7 @@ func (s *dockerContainerSource) Collect(ctx context.Context) ([]ContainerMetric,
 		}
 		return result[i].CPUPercent > result[j].CPUPercent
 	})
-	return result, nil
+	return result, errors.Join(errorsByIndex...)
 }
 
 func (s *dockerContainerSource) getJSON(ctx context.Context, path string, target any) error {
@@ -221,18 +244,19 @@ func containerMetricFromDocker(container dockerContainer, stats dockerStats) Con
 		txBytes += network.TxBytes
 	}
 	return ContainerMetric{
-		ID:            shortContainerID(container.ID),
-		Name:          name,
-		Image:         container.Image,
-		State:         container.State,
-		Status:        container.Status,
-		CPUPercent:    dockerCPUPercent(stats.CPUStats, stats.PreCPUStats),
-		MemoryUsed:    used,
-		MemoryLimit:   stats.MemoryStats.Limit,
-		MemoryPercent: memoryPercent,
-		NetRxBytes:    rxBytes,
-		NetTxBytes:    txBytes,
-		PIDs:          stats.PIDsStats.Current,
+		StatsAvailable: true,
+		ID:             shortContainerID(container.ID),
+		Name:           name,
+		Image:          container.Image,
+		State:          container.State,
+		Status:         container.Status,
+		CPUPercent:     dockerCPUPercent(stats.CPUStats, stats.PreCPUStats),
+		MemoryUsed:     used,
+		MemoryLimit:    stats.MemoryStats.Limit,
+		MemoryPercent:  memoryPercent,
+		NetRxBytes:     rxBytes,
+		NetTxBytes:     txBytes,
+		PIDs:           stats.PIDsStats.Current,
 	}
 }
 

@@ -49,7 +49,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 func (a *App) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go a.collector.Start(runCtx)
+	collectorDone := make(chan struct{})
+	go func() { defer close(collectorDone); a.collector.Start(runCtx) }()
 
 	serverErrors := make(chan error, 1)
 	go func() {
@@ -69,11 +70,13 @@ func (a *App) Run(ctx context.Context) error {
 		log.Printf("Received %s, shutting down", signal)
 	case err := <-serverErrors:
 		cancel()
+		<-collectorDone
 		_ = a.store.Close()
 		return fmt.Errorf("HTTP server failed: %w", err)
 	}
 
 	cancel()
+	<-collectorDone
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	if err := a.server.Shutdown(shutdownCtx); err != nil {

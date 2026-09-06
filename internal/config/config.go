@@ -23,6 +23,7 @@ type Config struct {
 	TrustProxyHeaders bool
 	AllowedOrigins    []string
 	HostRoot          string
+	HostProc          string
 	HostSys           string
 	NetworkInterfaces []string
 	ContainerMetrics  bool
@@ -95,6 +96,7 @@ func Load() (Config, error) {
 		TrustProxyHeaders: trustProxyHeaders,
 		AllowedOrigins:    allowedOrigins,
 		HostRoot:          strings.TrimSpace(os.Getenv("HOST_ROOT")),
+		HostProc:          strings.TrimSpace(os.Getenv("HOST_PROC")),
 		HostSys:           strings.TrimSpace(os.Getenv("HOST_SYS")),
 		NetworkInterfaces: splitCSV(os.Getenv("NETWORK_INTERFACES")),
 		ContainerMetrics:  containerMetrics,

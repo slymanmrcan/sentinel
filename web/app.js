@@ -152,6 +152,7 @@ async function apiFetch(url, options = {}) {
         request.headers['X-CSRF-Token'] = state.csrfToken;
     }
     request.cache = 'no-store';
+    request.signal ||= AbortSignal.timeout(15000);
     const response = await fetch(url, request);
     if (response.status === 401) {
         window.location.replace('/login');
@@ -186,6 +187,8 @@ async function loadRealtime() {
 
 function renderRealtime(metric) {
     const unavailable = new Set(metric.unavailable || []);
+    const stale = snapshotIsStale(metric.ts, 90) || unavailable.has('stale');
+    if (stale) ['cpu', 'memory', 'disk', 'swap', 'load', 'network', 'disk_io', 'cpu_temp'].forEach((name) => unavailable.add(name));
     updatePercentMetric('cpu', metric.cpu_percent, unavailable.has('cpu'));
     updatePercentMetric('memory', metric.ram_percent, unavailable.has('memory'));
     updatePercentMetric('disk', metric.disk_percent, unavailable.has('disk'));
@@ -232,10 +235,20 @@ function renderRealtime(metric) {
         Number(metric.disk_percent) || 0,
         Number(metric.swap_percent) || 0
     );
-    if (peak > 90) setHealth('critical', 'Critical');
+    if (stale) setHealth('offline', 'Stale data');
+    else if (peak > 90) setHealth('critical', 'Critical');
     else if (peak > 75) setHealth('warning', 'Watch');
     else if (unavailable.size > 0) setHealth('warning', 'Partial data');
     else setHealth('healthy', 'Healthy');
+}
+
+function snapshotIsStale(timestamp, maxAgeSeconds) {
+    const age = Date.now() - new Date(timestamp || '').getTime();
+    return !Number.isFinite(age) || age > maxAgeSeconds * 1000 || age < -5000;
+}
+
+function chartMetric(metric, field, availability) {
+    return (metric.unavailable || []).includes(availability) ? null : Number(metric[field]) || 0;
 }
 
 function updatePercentMetric(prefix, rawValue, unavailable = false) {
@@ -282,12 +295,12 @@ async function loadHistory() {
 function renderChart(metrics) {
     const labels = metrics.map((metric) => formatChartTime(metric.ts));
     const datasets = [
-        chartDataset('CPU', '#16d9e5', metrics.map((metric) => clamp(metric.cpu_percent)), 'percent', false),
-        chartDataset('RAM', '#a84df1', metrics.map((metric) => clamp(metric.ram_percent)), 'percent', false),
-        chartDataset('Disk', '#697070', metrics.map((metric) => clamp(metric.disk_percent)), 'percent', true),
-        chartDataset('Swap', '#f05b68', metrics.map((metric) => clamp(metric.swap_percent)), 'percent', false),
-        chartDataset('Net in', '#28d78c', metrics.map((metric) => Number(metric.net_rx_bps) || 0), 'bytes', true),
-        chartDataset('Net out', '#d2a546', metrics.map((metric) => Number(metric.net_tx_bps) || 0), 'bytes', true)
+        chartDataset('CPU', '#16d9e5', metrics.map((metric) => chartMetric(metric, 'cpu_percent', 'cpu')), 'percent', false),
+        chartDataset('RAM', '#a84df1', metrics.map((metric) => chartMetric(metric, 'ram_percent', 'memory')), 'percent', false),
+        chartDataset('Disk', '#697070', metrics.map((metric) => chartMetric(metric, 'disk_percent', 'disk')), 'percent', true),
+        chartDataset('Swap', '#f05b68', metrics.map((metric) => chartMetric(metric, 'swap_percent', 'swap')), 'percent', false),
+        chartDataset('Net in', '#28d78c', metrics.map((metric) => chartMetric(metric, 'net_rx_bps', 'network')), 'bytes', true),
+        chartDataset('Net out', '#d2a546', metrics.map((metric) => chartMetric(metric, 'net_tx_bps', 'network')), 'bytes', true)
     ];
 
     if (state.chart) {
@@ -379,20 +392,20 @@ function toggleSeries(button) {
 }
 
 function appendLivePoint(metric) {
-    if (!state.chart || state.chartRange !== '1h' || !metric.ts) return;
+    if (!state.chart || state.chartRange !== '1h' || snapshotIsStale(metric.ts, 90)) return;
     const label = formatChartTime(metric.ts);
     const labels = state.chart.data.labels;
     if (labels.at(-1) === label) return;
     labels.push(label);
     const values = [
-        metric.cpu_percent,
-        metric.ram_percent,
-        metric.disk_percent,
-        metric.swap_percent,
-        metric.net_rx_bps,
-        metric.net_tx_bps
+        chartMetric(metric, 'cpu_percent', 'cpu'),
+        chartMetric(metric, 'ram_percent', 'memory'),
+        chartMetric(metric, 'disk_percent', 'disk'),
+        chartMetric(metric, 'swap_percent', 'swap'),
+        chartMetric(metric, 'net_rx_bps', 'network'),
+        chartMetric(metric, 'net_tx_bps', 'network')
     ];
-    state.chart.data.datasets.forEach((dataset, index) => dataset.data.push(Number(values[index]) || 0));
+    state.chart.data.datasets.forEach((dataset, index) => dataset.data.push(values[index]));
     if (labels.length > 360) {
         labels.shift();
         state.chart.data.datasets.forEach((dataset) => dataset.data.shift());
@@ -405,14 +418,18 @@ async function loadSystemDetails() {
         const response = await apiFetch('/api/system/details');
         if (!response.ok) throw new Error(`System details returned ${response.status}`);
         const details = await response.json();
+        if (snapshotIsStale(details.checked_at, 150)) throw new Error('System details are stale');
         setText('kernelVersion', details.kernel_version || '—');
         const status = document.getElementById('systemState');
-        status.textContent = details.reboot_required ? 'Restart required' : 'Nominal';
+        status.textContent = details.reboot_required ? 'Restart required' : details.unavailable?.length ? 'Partial data' : 'Nominal';
         status.classList.toggle('warning', Boolean(details.reboot_required));
         renderProcessTable(details.processes || []);
-        renderPortTable(details.listening_ports || []);
+        renderPortTable(details.listening_ports || [], details.unavailable?.includes('listening_ports'));
     } catch (error) {
         console.error('Unable to load system details:', error);
+        setText('systemState', 'Unavailable');
+        renderProcessTable([]);
+        renderPortTable([], true);
     }
 }
 
@@ -436,10 +453,10 @@ function renderProcessTable(processes) {
     body.replaceChildren(fragment);
 }
 
-function renderPortTable(ports) {
+function renderPortTable(ports, unavailable = false) {
     const body = document.getElementById('portTable');
     if (!ports.length) {
-        body.replaceChildren(emptyTableRow(3, 'No listening ports returned.'));
+        body.replaceChildren(emptyTableRow(3, unavailable ? 'Host listening ports unavailable.' : 'No listening ports returned.'));
         return;
     }
     const fragment = document.createDocumentFragment();
@@ -710,25 +727,29 @@ function renderContainers(snapshot) {
         renderContainerRows([], 'Container metrics are disabled. See the setup guide to enable them safely.');
         return;
     }
-    if (!snapshot.available) {
+    const stale = snapshotIsStale(snapshot.collected_at, Math.max(90, 2 * Number(snapshot.interval_seconds || 30) + 30));
+    if (!snapshot.available || stale) {
+        state.containers = [];
         setText('containerCollectionState', `Docker telemetry · ${interval} collection · unavailable`);
-        setText('containerStatus', snapshot.message || 'Docker metrics are unavailable');
+        setText('containerStatus', stale ? 'Container data is stale' : snapshot.message || 'Docker metrics are unavailable');
         renderContainerSummary(null);
         setOverviewStatus('Container', '—', 'telemetry unavailable', 'critical');
         renderContainerRows([], 'Docker metrics are enabled but unavailable. Check the configured API or socket access.');
         return;
     }
     const unhealthy = containers.filter(isContainerUnhealthy).length;
+    const running = containers.filter((item) => item.state === 'running').length;
+    const incomplete = snapshot.partial || containers.some((item) => item.state === 'running' && !item.stats_available);
     const updated = snapshot.collected_at ? new Date(snapshot.collected_at).toLocaleTimeString() : 'just now';
     setText('containerCollectionState', `Docker telemetry · ${interval} collection · updated ${updated}`);
     setText('containerStatus', containers.length
-        ? `${containers.length} running · ${unhealthy} unhealthy`
-        : 'No running containers');
+        ? `${running} running / ${containers.length} total · ${unhealthy} not running or unhealthy${incomplete ? ' · partial stats' : ''}`
+        : 'No containers found');
     setOverviewStatus(
         'Container',
         containers.length,
-        unhealthy > 0 ? `${unhealthy} unhealthy` : 'all workloads healthy',
-        unhealthy > 0 ? 'critical' : 'healthy'
+        unhealthy > 0 ? `${unhealthy} not running or unhealthy` : incomplete ? 'partial stats' : containers.length ? 'no unhealthy states reported' : 'no containers found',
+        unhealthy > 0 ? 'critical' : incomplete || !containers.length ? 'warning' : 'healthy'
     );
     renderContainerSummary(containers);
     renderContainerRows(containers);
@@ -751,9 +772,11 @@ function renderContainerSummary(containers) {
         return result;
     }, { cpu: 0, memory: 0, rx: 0, tx: 0 });
     setText('containerCount', containers.length);
-    setText('containerCPU', `${totals.cpu.toFixed(1)}%`);
-    setText('containerMemory', formatBytes(totals.memory));
-    setText('containerNetwork', `${formatBytes(totals.rx)} / ${formatBytes(totals.tx)}`);
+    const incomplete = containers.some((item) => item.state === 'running' && !item.stats_available);
+    const cpuIncomplete = incomplete || containers.some((item) => item.state === 'running' && !item.cpu_available);
+    setText('containerCPU', cpuIncomplete ? '—' : `${totals.cpu.toFixed(1)}%`);
+    setText('containerMemory', incomplete ? '—' : formatBytes(totals.memory));
+    setText('containerNetwork', incomplete ? '—' : `${formatBytes(totals.rx)} / ${formatBytes(totals.tx)}`);
 }
 
 function renderContainerRows(containers, emptyMessage = 'No running containers returned.') {
@@ -784,15 +807,15 @@ function renderContainerRows(containers, emptyMessage = 'No running containers r
         row.className = unhealthy ? 'container-row-unhealthy' : '';
         const name = cell(container.name || container.id, container.image || '');
         name.className = 'container-name';
-        const status = cell(container.status || container.state || '—');
+        const status = cell([container.status || container.state || '—', container.stats_message].filter(Boolean).join(' · '));
         status.className = unhealthy ? 'container-state unhealthy' : 'container-state';
         row.append(
             name,
             status,
-            cell(formatPercent(container.cpu_percent)),
-            cell(`${formatBytes(container.memory_used)} / ${formatBytes(container.memory_limit)} (${formatPercent(container.memory_percent)})`),
-            cell(`${formatBytes(container.net_rx_bytes)} / ${formatBytes(container.net_tx_bytes)}`),
-            cell(container.pids ?? '—')
+            cell(container.stats_available && container.cpu_available ? formatPercent(container.cpu_percent) : '—'),
+            cell(container.stats_available ? `${formatBytes(container.memory_used)} / ${formatBytes(container.memory_limit)} (${formatPercent(container.memory_percent)})` : '—'),
+            cell(container.stats_available ? `${formatBytes(container.net_rx_bytes)} / ${formatBytes(container.net_tx_bytes)}` : '—'),
+            cell(container.stats_available ? container.pids ?? '—' : '—')
         );
         fragment.appendChild(row);
     });

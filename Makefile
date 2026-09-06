@@ -20,6 +20,7 @@ clean:
 test:
 	@echo "Running Go tests..."
 	go test ./...
+	node --test tests/dashboard.test.cjs
 
 fmt:
 	@echo "Formatting Go code..."

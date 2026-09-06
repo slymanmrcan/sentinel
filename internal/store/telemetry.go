@@ -9,6 +9,14 @@ import (
 )
 
 func (s *Store) InsertMetric(ctx context.Context, metric Metric) error {
+	value := func(name string, raw any) any {
+		for _, unavailable := range metric.Unavailable {
+			if unavailable == name {
+				return nil
+			}
+		}
+		return raw
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO metrics (
 			ts, cpu_percent, ram_percent, ram_used, ram_total,
@@ -18,11 +26,11 @@ func (s *Store) InsertMetric(ctx context.Context, metric Metric) error {
 			net_rx_bps, net_tx_bps, disk_read_bps, disk_write_bps
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		metric.Timestamp, metric.CPUPercent, metric.RAMPercent, metric.RAMUsed, metric.RAMTotal,
-		metric.DiskPercent, metric.DiskUsed, metric.DiskTotal, metric.HostName, metric.CPUTemp,
-		metric.Load1, metric.Load5, metric.Load15, metric.Processes,
-		metric.SwapPercent, metric.SwapUsed, metric.SwapTotal,
-		metric.NetRxBps, metric.NetTxBps, metric.DiskReadBps, metric.DiskWriteBps,
+		metric.Timestamp, value("cpu", metric.CPUPercent), value("memory", metric.RAMPercent), value("memory", metric.RAMUsed), value("memory", metric.RAMTotal),
+		value("disk", metric.DiskPercent), value("disk", metric.DiskUsed), value("disk", metric.DiskTotal), metric.HostName, value("cpu_temp", metric.CPUTemp),
+		value("load", metric.Load1), value("load", metric.Load5), value("load", metric.Load15), value("host", metric.Processes),
+		value("swap", metric.SwapPercent), value("swap", metric.SwapUsed), value("swap", metric.SwapTotal),
+		value("network", metric.NetRxBps), value("network", metric.NetTxBps), value("disk_io", metric.DiskReadBps), value("disk_io", metric.DiskWriteBps),
 	)
 	return err
 }
@@ -39,16 +47,16 @@ func (s *Store) History(ctx context.Context, timeRange string) (metrics []Metric
 	}
 	query := fmt.Sprintf(`
 		SELECT time_bucket(INTERVAL '%s', ts) AS bucket_ts,
-		       COALESCE(AVG(cpu_percent), 0),
-		       COALESCE(AVG(ram_percent), 0),
-		       COALESCE(AVG(disk_percent), 0),
-		       COALESCE(AVG(swap_percent), 0),
-		       COALESCE(AVG(cpu_temp), 0),
-		       COALESCE(AVG(load_1), 0),
-		       COALESCE(AVG(net_rx_bps), 0),
-		       COALESCE(AVG(net_tx_bps), 0),
-		       COALESCE(AVG(disk_read_bps), 0),
-		       COALESCE(AVG(disk_write_bps), 0)
+		       AVG(cpu_percent),
+		       AVG(ram_percent),
+		       AVG(disk_percent),
+		       AVG(swap_percent),
+		       AVG(cpu_temp),
+		       AVG(load_1),
+		       AVG(net_rx_bps),
+		       AVG(net_tx_bps),
+		       AVG(disk_read_bps),
+		       AVG(disk_write_bps)
 		FROM metrics
 		WHERE ts > now() - INTERVAL %s
 		GROUP BY bucket_ts
@@ -64,13 +72,23 @@ func (s *Store) History(ctx context.Context, timeRange string) (metrics []Metric
 	metrics = make([]Metric, 0)
 	for rows.Next() {
 		var metric Metric
-		if err := rows.Scan(
-			&metric.Timestamp, &metric.CPUPercent, &metric.RAMPercent,
-			&metric.DiskPercent, &metric.SwapPercent, &metric.CPUTemp,
-			&metric.Load1, &metric.NetRxBps, &metric.NetTxBps,
-			&metric.DiskReadBps, &metric.DiskWriteBps,
-		); err != nil {
+		var values [10]sql.NullFloat64
+		args := []any{&metric.Timestamp}
+		for i := range values {
+			args = append(args, &values[i])
+		}
+		if err := rows.Scan(args...); err != nil {
 			return nil, err
+		}
+		targets := []*float64{&metric.CPUPercent, &metric.RAMPercent, &metric.DiskPercent, &metric.SwapPercent, &metric.CPUTemp, &metric.Load1, &metric.NetRxBps, &metric.NetTxBps, &metric.DiskReadBps, &metric.DiskWriteBps}
+		names := []string{"cpu", "memory", "disk", "swap", "cpu_temp", "load", "network", "network", "disk_io", "disk_io"}
+		missing := make(map[string]bool)
+		for i, value := range values {
+			*targets[i] = value.Float64
+			if !value.Valid && !missing[names[i]] {
+				metric.Unavailable = append(metric.Unavailable, names[i])
+				missing[names[i]] = true
+			}
 		}
 		metrics = append(metrics, metric)
 	}
@@ -134,10 +152,10 @@ func (s *Store) Baseline(ctx context.Context, metric string) (Baseline, error) {
 		return Baseline{}, fmt.Errorf("unsupported baseline metric %q", metric)
 	}
 	query := fmt.Sprintf(`
-		SELECT COUNT(*), COALESCE(AVG(%s), 0), COALESCE(STDDEV_SAMP(%s), 0)
+		SELECT COUNT(%s), COALESCE(AVG(%s), 0), COALESCE(STDDEV_SAMP(%s), 0)
 		FROM metrics
 		WHERE ts > now() - INTERVAL 1 HOUR
-	`, column, column)
+	`, column, column, column)
 	var baseline Baseline
 	baseline.Metric = metric
 	err := s.db.QueryRowContext(ctx, query).Scan(&baseline.Count, &baseline.Mean, &baseline.StdDev)

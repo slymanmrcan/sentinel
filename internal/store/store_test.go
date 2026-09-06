@@ -85,3 +85,31 @@ func TestSettingRoundTrip(t *testing.T) {
 		t.Fatalf("Setting() = (%q, %t, %v), want (45, true, nil)", value, found, err)
 	}
 }
+
+func TestUnavailableMeasurementsDoNotBecomeZeroBaselines(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "partial.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	for _, metric := range []Metric{
+		{Timestamp: time.Now().Add(-time.Minute), RAMPercent: 80},
+		{Timestamp: time.Now(), CPUPercent: 95, Unavailable: []string{"memory"}},
+	} {
+		if err := db.InsertMetric(ctx, metric); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, err := db.Baseline(ctx, "memory")
+	if err != nil || b.Count != 1 || b.Mean != 80 {
+		t.Fatalf("missing reading polluted baseline: %+v, %v", b, err)
+	}
+	history, err := db.History(ctx, "1h")
+	if err != nil || len(history) != 2 {
+		t.Fatalf("partial history: %+v, %v", history, err)
+	}
+	if len(history[1].Unavailable) != 1 || history[1].Unavailable[0] != "memory" {
+		t.Fatalf("missing reading was presented as zero: %+v", history[1])
+	}
+}

@@ -145,6 +145,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	metric := s.collector.Current()
+	for _, field := range metric.Unavailable {
+		if field == "stale" || field == "history" {
+			http.Error(w, "telemetry unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = w.Write([]byte("OK"))
 }

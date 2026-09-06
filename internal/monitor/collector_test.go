@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -77,5 +78,82 @@ func TestProcessCPUPercentUsesSamplingWindow(t *testing.T) {
 	}
 	if got := processCPUPercent(2, 10, 2); got != 0 {
 		t.Fatalf("processCPUPercent() after reset = %v, want 0", got)
+	}
+}
+
+func TestAlertsIgnoreOnlyUnavailableMetric(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "alerts.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	c := New(db, config.Config{})
+	c.evaluateAlerts(context.Background(), store.Metric{Timestamp: time.Now(), CPUPercent: 95, RAMPercent: 99, Unavailable: []string{"memory"}})
+	events, err := db.AlertEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Metric != "cpu" {
+		t.Fatalf("unavailable metric affected alarms: %+v", events)
+	}
+}
+
+func TestPartialCollectionStillStoresHistoryAndRaisesOtherAlerts(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "partial.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	c := New(db, config.Config{})
+	c.recordMetric(context.Background(), store.Metric{Timestamp: time.Now(), CPUPercent: 95, Unavailable: []string{"swap"}})
+	events, err := db.AlertEvents(context.Background(), 10)
+	if err != nil || len(events) != 1 || events[0].Metric != "cpu" {
+		t.Fatalf("CPU alert lost because swap is missing: %+v %v", events, err)
+	}
+	history, err := db.History(context.Background(), "1h")
+	if err != nil || len(history) != 1 || history[0].CPUPercent != 95 {
+		t.Fatalf("valid history lost: %+v %v", history, err)
+	}
+}
+
+func TestCurrentMarksOldSamplesStaleWithoutMutatingCache(t *testing.T) {
+	c := New(nil, config.Config{})
+	c.current = store.Metric{Timestamp: time.Now().Add(-5 * time.Minute)}
+	if !hasUnavailable(c.Current().Unavailable, "stale") {
+		t.Fatal("old sample not marked stale")
+	}
+	if len(c.current.Unavailable) != 0 {
+		t.Fatal("reading current mutated cache")
+	}
+	c.current.Timestamp = time.Now()
+	if hasUnavailable(c.Current().Unavailable, "stale") {
+		t.Fatal("fresh sample marked stale")
+	}
+}
+
+func TestMetricWriteFailureDoesNotPreventAlertEvaluation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "failed-write.db")
+	db, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	connection, err := sql.Open("duckdb", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	// Make only metric persistence fail; alert rules/events remain writable.
+	if _, err := connection.Exec("DROP TABLE metrics"); err != nil {
+		t.Fatal(err)
+	}
+	c := New(db, config.Config{})
+	c.recordMetric(context.Background(), store.Metric{Timestamp: time.Now(), CPUPercent: 95})
+	events, err := db.AlertEvents(context.Background(), 10)
+	if err != nil || len(events) != 1 {
+		t.Fatalf("metric write failure suppressed alert: %+v %v", events, err)
+	}
+	if !hasUnavailable(c.Current().Unavailable, "history") {
+		t.Fatal("failed persistence was not exposed")
 	}
 }

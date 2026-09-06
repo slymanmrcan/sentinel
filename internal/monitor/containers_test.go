@@ -3,9 +3,11 @@ package monitor
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -83,5 +85,78 @@ func TestDockerCPUPercentHandlesCounterReset(t *testing.T) {
 	previous.CPUUsage.TotalUsage = 20
 	if got := dockerCPUPercent(current, previous); got != 0 {
 		t.Fatalf("dockerCPUPercent() after reset = %v, want 0", got)
+	}
+}
+
+func TestDockerStoppedContainersRemainVisible(t *testing.T) {
+	source := &dockerContainerSource{baseURL: "http://docker", client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/containers/json" {
+			t.Errorf("stats requested for stopped container: %s", r.URL.Path)
+		}
+		body := `[]`
+		if r.URL.Query().Get("all") == "true" {
+			body = `[{"Id":"stopped","Names":["/api"],"State":"exited","Status":"Exited (1)"}]`
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(body))}, nil
+	})}}
+	metrics, err := source.Collect(context.Background())
+	if err != nil || len(metrics) != 1 || metrics[0].State != "exited" {
+		t.Fatalf("stopped workload disappeared: metrics=%v err=%v", metrics, err)
+	}
+}
+
+func TestDockerPartialFailureKeepsSuccessfulContainers(t *testing.T) {
+	source := &dockerContainerSource{baseURL: "http://docker", client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{ "memory_stats": {"usage":100,"limit":200} }`
+		if r.URL.Path == "/containers/json" {
+			body = `[{"Id":"good","State":"running"},{"Id":"bad","State":"running"}]`
+		}
+		if r.URL.Path == "/containers/bad/stats" {
+			return nil, fmt.Errorf("container disappeared during sampling")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(body))}, nil
+	})}}
+	metrics, _ := source.Collect(context.Background())
+	if len(metrics) != 2 {
+		t.Fatalf("one failed stats call removed workloads: got %d, want 2", len(metrics))
+	}
+	for _, metric := range metrics {
+		if metric.ID == "good" && metric.MemoryUsed != 100 {
+			t.Fatalf("successful stats lost: %v", metric)
+		}
+	}
+}
+
+func TestDockerStatsBudgetNeverHidesInventory(t *testing.T) {
+	var statsCalls atomic.Int32
+	containers := make([]dockerContainer, 65)
+	for i := range containers {
+		containers[i] = dockerContainer{ID: fmt.Sprintf("container-%03d", i), State: "running"}
+	}
+	encoded, err := json.Marshal(containers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := &dockerContainerSource{baseURL: "http://docker", client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := []byte(`{}`)
+		if r.URL.Path == "/containers/json" {
+			body = encoded
+		} else {
+			statsCalls.Add(1)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body))}, nil
+	})}}
+	metrics, err := source.Collect(context.Background())
+	if err == nil || len(metrics) != 65 || statsCalls.Load() != 64 {
+		t.Fatalf("budget discarded state or exceeded stats limit: count=%d calls=%d err=%v", len(metrics), statsCalls.Load(), err)
+	}
+	unavailable := 0
+	for _, metric := range metrics {
+		if !metric.StatsAvailable {
+			unavailable++
+		}
+	}
+	if unavailable != 1 {
+		t.Fatalf("unavailable stats=%d, want 1", unavailable)
 	}
 }

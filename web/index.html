@@ -129,8 +129,8 @@
                             <div class="metric-track"><i id="swapBar"></i></div>
                             <div class="metric-meta"><span>used <b id="swapUsed">—</b></span><span>total <b id="swapTotal">—</b></span></div>
                         </article>
-                        <article class="metric-card" title="Host network traffic across all interfaces since the last boot">
-                            <div class="metric-head"><span>Network traffic</span><em>since boot</em></div>
+                        <article class="metric-card" title="Sum of the selected host interface counters; includes virtual interfaces when no filter is configured">
+                            <div class="metric-head"><span>Network traffic</span><em>cumulative</em></div>
                             <strong class="metric-value metric-value-small" id="networkTotal">0 B</strong>
                             <div class="metric-track"><i id="networkBar"></i></div>
                             <div class="metric-meta"><span>in <b id="networkInTotal">0 B</b></span><span>out <b id="networkOutTotal">0 B</b></span></div>
@@ -187,14 +187,14 @@
                         <span id="containerCollectionState">optional Docker telemetry · loading</span>
                     </div>
                     <div class="container-summary-grid" aria-label="Container totals">
-                        <article class="panel compact-stat"><span>Running</span><strong id="containerCount">—</strong><small>containers</small></article>
+                        <article class="panel compact-stat"><span>Total</span><strong id="containerCount">—</strong><small>containers</small></article>
                         <article class="panel compact-stat"><span>CPU</span><strong id="containerCPU">—</strong><small>combined usage</small></article>
                         <article class="panel compact-stat"><span>Memory</span><strong id="containerMemory">—</strong><small>working set</small></article>
                         <article class="panel compact-stat"><span>Network I/O</span><strong id="containerNetwork">—</strong><small>received / sent</small></article>
                     </div>
                     <article class="panel container-panel">
                         <div class="panel-heading">
-                            <h3>Running workloads</h3>
+                            <h3>All workloads</h3>
                             <div class="panel-heading-actions">
                                 <span class="container-status" id="containerStatus">Checking configuration…</span>
                                 <button class="text-action" id="containerToggle" type="button" aria-controls="containerTable" aria-expanded="false" hidden>Show all</button>

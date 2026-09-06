@@ -4,12 +4,14 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/slymanmrcan/sentinel/internal/auth"
 	"github.com/slymanmrcan/sentinel/internal/config"
 	"github.com/slymanmrcan/sentinel/internal/monitor"
+	"github.com/slymanmrcan/sentinel/internal/store"
 )
 
 func TestNormalizeLogInput(t *testing.T) {
@@ -40,6 +42,20 @@ func TestNormalizeLogInput(t *testing.T) {
 				t.Fatalf("normalizeLogInput() = %#v, want %#v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestHealthRejectsMissingCollection(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "health.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	s := &Server{store: db, collector: monitor.New(db, config.Config{})}
+	w := httptest.NewRecorder()
+	s.handleHealth(w, httptest.NewRequest("GET", "/healthz", nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("health without any sample = %d, want 503", w.Code)
 	}
 }
 

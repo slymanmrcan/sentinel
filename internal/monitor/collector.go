@@ -30,6 +30,8 @@ type Collector struct {
 	lastSample   ioSample
 	processMu    sync.Mutex
 	processes    map[int32]processSample
+	detailsMu    sync.Mutex
+	details      SystemDetails
 	containerMu  sync.RWMutex
 	containers   ContainerSnapshot
 	containerSrc containerSource
@@ -72,12 +74,12 @@ func New(dataStore *store.Store, cfg config.Config) *Collector {
 }
 
 func (c *Collector) Start(ctx context.Context) {
+	containerDone := make(chan struct{})
+	go func() { defer close(containerDone); c.runContainers(ctx) }()
+	defer func() { <-containerDone }()
 	c.collect(ctx)
-	c.collectContainers(ctx)
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
-	containerTimer := time.NewTimer(c.ContainerInterval())
-	defer containerTimer.Stop()
 	pruneTicker := time.NewTicker(time.Hour)
 	defer pruneTicker.Stop()
 
@@ -87,21 +89,28 @@ func (c *Collector) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 			c.collect(ctx)
-		case <-containerTimer.C:
-			c.collectContainers(ctx)
-			containerTimer.Reset(c.ContainerInterval())
-		case <-c.intervalSet:
-			if !containerTimer.Stop() {
-				select {
-				case <-containerTimer.C:
-				default:
-				}
-			}
-			containerTimer.Reset(c.ContainerInterval())
 		case <-pruneTicker.C:
 			if err := c.store.Prune(ctx); err != nil {
 				log.Printf("telemetry prune failed: %v", err)
 			}
+		}
+	}
+}
+
+func (c *Collector) runContainers(ctx context.Context) {
+	c.collectContainers(ctx)
+	timer := time.NewTimer(c.ContainerInterval())
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			c.collectContainers(ctx)
+			timer.Reset(c.ContainerInterval())
+		case <-c.intervalSet:
+			timer.Stop()
+			timer.Reset(c.ContainerInterval())
 		}
 	}
 }
@@ -122,10 +131,10 @@ func (c *Collector) collectContainers(ctx context.Context) {
 	}
 	collectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	containers, err := c.containerSrc.Collect(collectCtx)
 	collectedAt := time.Now()
+	containers, err := c.containerSrc.Collect(collectCtx)
 	snapshot := ContainerSnapshot{
-		Enabled: true, Available: err == nil, CollectedAt: &collectedAt,
+		Enabled: true, Available: containers != nil, Partial: containers != nil && err != nil, CollectedAt: &collectedAt,
 		IntervalSec: int(c.ContainerInterval() / time.Second), Containers: containers,
 	}
 	if containers == nil {
@@ -133,6 +142,9 @@ func (c *Collector) collectContainers(ctx context.Context) {
 	}
 	if err != nil {
 		snapshot.Message = "Docker metrics are currently unavailable"
+		if snapshot.Partial {
+			snapshot.Message = "Some container stats are unavailable; other measurements are shown"
+		}
 		log.Printf("container metric collection failed: %v", err)
 	}
 	c.containerMu.Lock()
@@ -183,25 +195,34 @@ func (c *Collector) setContainerInterval(interval time.Duration) {
 func (c *Collector) Current() store.Metric {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.current
+	metric := c.current
+	metric.Unavailable = append([]string(nil), metric.Unavailable...)
+	if !freshMetric(metric.Timestamp, time.Now()) {
+		metric.Unavailable = append(metric.Unavailable, "stale")
+	}
+	return metric
+}
+
+func freshMetric(at, now time.Time) bool {
+	return !at.IsZero() && now.Sub(at) >= -5*time.Second && now.Sub(at) <= 90*time.Second
 }
 
 func (c *Collector) collect(ctx context.Context) {
-	metric := c.snapshot()
+	c.recordMetric(ctx, c.snapshot())
+}
+
+func (c *Collector) recordMetric(ctx context.Context, metric store.Metric) {
+	// Alert evaluation must not depend on successfully persisting a sample.
+	c.evaluateAlerts(ctx, metric)
+	if err := c.store.InsertMetric(ctx, metric); err != nil {
+		log.Printf("metric insert failed: %v", err)
+		metric.Unavailable = append(metric.Unavailable, "history")
+	} else {
+		c.evaluateAnomalies(ctx, metric)
+	}
 	c.mu.Lock()
 	c.current = metric
 	c.mu.Unlock()
-
-	if hasUnavailable(metric.Unavailable, "cpu", "memory", "disk", "swap", "load") {
-		log.Printf("metric history sample skipped because a baseline field is unavailable: %s", strings.Join(metric.Unavailable, ","))
-		return
-	}
-	if err := c.store.InsertMetric(ctx, metric); err != nil {
-		log.Printf("metric insert failed: %v", err)
-		return
-	}
-	c.evaluateAnomalies(ctx, metric)
-	c.evaluateAlerts(ctx, metric)
 }
 
 func (c *Collector) snapshot() store.Metric {
@@ -311,7 +332,7 @@ func firstFloat(values []float64) float64 {
 func (c *Collector) sampleThroughput() (float64, float64, uint64, uint64, float64, float64, []string) {
 	var netRx, netTx, diskRead, diskWrite uint64
 	unavailable := make([]string, 0, 2)
-	if counters, err := gnet.IOCounters(len(c.cfg.NetworkInterfaces) > 0); err == nil && len(counters) > 0 {
+	if counters, err := c.networkCounters(); err == nil && len(counters) > 0 {
 		var found bool
 		netRx, netTx, found = selectedNetworkCounters(counters, c.cfg.NetworkInterfaces)
 		if !found {
@@ -356,22 +377,27 @@ func selectedNetworkCounters(counters []gnet.IOCountersStat, selected []string) 
 		if len(counters) == 0 {
 			return 0, 0, false
 		}
-		return counters[0].BytesRecv, counters[0].BytesSent, true
+		var rx, tx uint64
+		for _, counter := range counters {
+			rx += counter.BytesRecv
+			tx += counter.BytesSent
+		}
+		return rx, tx, true
 	}
 	wanted := make(map[string]bool, len(selected))
 	for _, name := range selected {
 		wanted[name] = true
 	}
 	var received, sent uint64
-	found := false
+	found := 0
 	for _, counter := range counters {
 		if wanted[counter.Name] {
-			found = true
+			found++
 			received += counter.BytesRecv
 			sent += counter.BytesSent
 		}
 	}
-	return received, sent, found
+	return received, sent, found == len(wanted)
 }
 
 func hasUnavailable(unavailable []string, names ...string) bool {
@@ -401,6 +427,9 @@ func (c *Collector) evaluateAnomalies(ctx context.Context, metric store.Metric) 
 		"load": metric.Load1,
 	}
 	for name, value := range values {
+		if hasUnavailable(metric.Unavailable, name) {
+			continue
+		}
 		baseline, err := c.store.Baseline(ctx, name)
 		if err != nil || baseline.Count < 12 || baseline.StdDev < 0.01 {
 			continue
@@ -450,6 +479,7 @@ func metricLabel(metric string) string {
 func (c *Collector) evaluateAlerts(ctx context.Context, metric store.Metric) {
 	rules, err := c.store.AlertRules(ctx)
 	if err != nil {
+		log.Printf("alert rules unavailable: %v", err)
 		return
 	}
 	values := map[string]float64{
@@ -457,7 +487,10 @@ func (c *Collector) evaluateAlerts(ctx context.Context, metric store.Metric) {
 		"disk": metric.DiskPercent, "swap": metric.SwapPercent,
 	}
 	for _, rule := range rules {
-		value := values[rule.Metric]
+		value, supported := values[rule.Metric]
+		if !supported || hasUnavailable(metric.Unavailable, rule.Metric) {
+			continue
+		}
 		if !rule.Enabled || value < rule.Threshold || time.Since(c.lastAlert[rule.ID]) < 10*time.Minute {
 			continue
 		}
@@ -474,6 +507,8 @@ func (c *Collector) evaluateAlerts(ctx context.Context, metric store.Metric) {
 		if err := c.store.InsertAlertEvent(ctx, event); err == nil {
 			c.lastAlert[rule.ID] = time.Now()
 			c.log(ctx, "WARN", event.Message, "alerts")
+		} else {
+			log.Printf("[WARN] [alerts] %s (event persistence failed: %v)", event.Message, err)
 		}
 	}
 }

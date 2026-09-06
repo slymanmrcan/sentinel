@@ -148,7 +148,7 @@ aynı Docker ağından doğrudan erişen istemciler de bu güven sınırının i
 
 | Method | Route | Auth | Açıklama |
 |---|---|---|---|
-| `GET` | `/healthz` | Hayır | DB liveness |
+| `GET` | `/healthz` | Hayır | DB + telemetry freshness |
 | `POST` | `/api/auth/login` | Hayır | Oturum aç |
 | `GET` | `/api/auth/me` | Evet | Kullanıcı + CSRF token |
 | `POST` | `/api/auth/logout` | Evet + CSRF | Oturumu kapat |
@@ -204,20 +204,10 @@ CONTAINER_METRICS_ENABLED=true
 CONTAINER_API_URL=http://docker-metrics-proxy:2375
 ```
 
-Doğrudan `/var/run/docker.sock` bağlantısı da desteklenir ancak Docker daemon
-erişimi pratikte host üzerinde çok yüksek yetki verir. Bu yüzden varsayılan
-Compose dosyası socket mount etmez. Kurulum seçenekleri ve metrik formülleri
-için [container metrics rehberine](docs/container-metrics.md) bakın.
-
-Güvenilir tek-host kurulumu için repository'deki açık opt-in override'ı
-kullanın:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.containers.yml up -d --build
-```
-
-Bu komut container telemetrisini açar ve Linux Docker socket'ini bağlar.
-Varsayılan `docker compose up` socket erişimi vermez.
+Doğrudan `/var/run/docker.sock` bağlantısı da desteklenir. Mevcut Compose dosyası
+socket'i bağlar; bu erişim host üzerinde yüksek yetki verir. Kısıtlı HTTP proxy'ye
+geçerseniz socket mount'unu kaldırın. Ayrı bir override dosyası gerekmez.
+Kurulum ve ölçüm anlamları için [container metrics rehberine](docs/container-metrics.md) bakın.
 
 Header'daki interval seçici `15s`, `30s`, `45s`, `1m` ve `2m` seçeneklerini
 gerçek collector timer'ına uygular. Seçim DuckDB'ye kaydedilir ve restart sonrası
@@ -376,17 +366,11 @@ Compose exposes port `8000` only on the external `infra_net`; it does not
 publish a host port. The container uses a read-only root filesystem, dropped
 capabilities, no-new-privileges, and read-only host inspection mounts.
 
-Container telemetry is disabled by default. Prefer a protected, read-only
-Docker API proxy. Directly mounting `docker.sock` grants highly privileged
-daemon access even if the mount itself is marked read-only, so the default
-Compose file deliberately does not mount it. See
-[container metrics](docs/container-metrics.md).
-
-For an explicitly trusted single-host installation, use the opt-in override:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.containers.yml up -d --build
-```
+Container telemetry is disabled by default in configuration, but the current
+Compose file mounts `docker.sock`. Direct socket access grants highly privileged
+daemon access, including when mounted read-only. If using a restricted HTTP
+proxy instead, remove the socket mount. No separate override file is included.
+See [container metrics](docs/container-metrics.md).
 
 The header interval selector changes the actual Docker collection timer and
 persists the selected `15s`, `30s`, `45s`, `1m`, or `2m` value in DuckDB.
@@ -429,3 +413,28 @@ traffic, so they should not be treated as ISP billing measurements.
 ## License
 
 Sentinel is available under the [MIT License](LICENSE).
+
+## Telemetry correctness
+
+- Docker inventory includes stopped containers. Stopped/paused/restarting items
+  remain visible without stats requests. A failed stats request marks only that
+  container unavailable; totals are withheld when incomplete. CPU is unavailable
+  until two valid samples exist. Metadata remains visible beyond the 64-running-
+  container stats budget. Removed containers are not a persistent expected-service
+  inventory; intentionally stopped jobs can also appear as not running.
+- Host and Docker collection run independently. Host data older than 90 seconds
+  is stale; `/healthz` returns 503 before the first sample, on stale collection or
+  on failed metric persistence. Partial optional sensors do not fail healthchecks.
+- Valid fields in partial samples are retained. Missing fields are SQL NULL,
+  excluded from statistical baselines, and shown as gaps in charts. Other valid
+  metrics continue to trigger alerts. Persistence failures are logged; writing an
+  alert to a full/unavailable database cannot be guaranteed.
+- With `HOST_PROC` set to a host proc mount, counters and TCP listeners explicitly
+  use the host PID 1 network namespace. They never silently fall back to the
+  container namespace. Without it, native OS readers are used. Unreadable socket
+  ownership is shown as unknown. System details share a 60-second cache.
+- `NETWORK_INTERFACES` remains an explicit selector. Empty means the sum of all
+  interfaces, including bridges/veth/loopback, not ISP traffic. A missing selected
+  interface marks the measurement unavailable.
+
+See [Linux validation](docs/linux-validation.md) for deployment comparisons.

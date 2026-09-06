@@ -15,6 +15,8 @@ import (
 )
 
 type SystemDetails struct {
+	CheckedAt      time.Time     `json:"checked_at"`
+	Unavailable    []string      `json:"unavailable,omitempty"`
 	KernelVersion  string        `json:"kernel_version"`
 	RebootRequired bool          `json:"reboot_required"`
 	Processes      []ProcessInfo `json:"processes"`
@@ -41,16 +43,39 @@ type processSample struct {
 }
 
 func (c *Collector) SystemDetails() SystemDetails {
+	c.detailsMu.Lock()
+	defer c.detailsMu.Unlock()
+	if !c.details.CheckedAt.IsZero() && time.Since(c.details.CheckedAt) < time.Minute {
+		return cloneSystemDetails(c.details)
+	}
+	checkedAt := time.Now()
 	kernel := "Unknown"
 	if stat, err := host.Info(); err == nil {
 		kernel = stat.KernelVersion
 	}
-	return SystemDetails{
+	ports, portErr := c.listeningPorts()
+	processes, processErr := c.processesNow()
+	c.details = SystemDetails{
+		CheckedAt:      checkedAt,
 		KernelVersion:  kernel,
 		RebootRequired: c.rebootRequired(),
-		Processes:      c.processesNow(),
-		ListeningPorts: listeningPorts(),
+		Processes:      processes,
+		ListeningPorts: ports,
 	}
+	if portErr != nil {
+		c.details.Unavailable = append(c.details.Unavailable, "listening_ports")
+	}
+	if processErr != nil {
+		c.details.Unavailable = append(c.details.Unavailable, "processes")
+	}
+	return cloneSystemDetails(c.details)
+}
+
+func cloneSystemDetails(details SystemDetails) SystemDetails {
+	details.Processes = append([]ProcessInfo{}, details.Processes...)
+	details.ListeningPorts = append([]PortInfo{}, details.ListeningPorts...)
+	details.Unavailable = append([]string(nil), details.Unavailable...)
+	return details
 }
 
 func (c *Collector) hostOS(fallback string) string {
@@ -144,13 +169,13 @@ func (c *Collector) rebootRequired() bool {
 	return err == nil
 }
 
-func (c *Collector) processesNow() []ProcessInfo {
+func (c *Collector) processesNow() ([]ProcessInfo, error) {
 	c.processMu.Lock()
 	defer c.processMu.Unlock()
 
 	list, err := process.Processes()
 	if err != nil {
-		return []ProcessInfo{}
+		return []ProcessInfo{}, err
 	}
 	now := time.Now()
 	current := make(map[int32]processSample, len(list))
@@ -183,7 +208,7 @@ func (c *Collector) processesNow() []ProcessInfo {
 	if len(result) > 15 {
 		result = result[:15]
 	}
-	return result
+	return result, nil
 }
 
 func processCPUPercent(current, previous, elapsedSeconds float64) float64 {
@@ -193,10 +218,13 @@ func processCPUPercent(current, previous, elapsedSeconds float64) float64 {
 	return (current - previous) / elapsedSeconds * 100
 }
 
-func listeningPorts() []PortInfo {
+func (c *Collector) listeningPorts() ([]PortInfo, error) {
+	if c.cfg.HostProc != "" {
+		return readHostListeningPorts(c.cfg.HostProc)
+	}
 	connections, err := gnet.Connections("tcp")
 	if err != nil {
-		return []PortInfo{}
+		return []PortInfo{}, err
 	}
 	result := make([]PortInfo, 0)
 	seen := make(map[uint32]bool)
@@ -218,7 +246,7 @@ func listeningPorts() []PortInfo {
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Port < result[j].Port })
-	return result
+	return result, nil
 }
 
 func randomID() string {
