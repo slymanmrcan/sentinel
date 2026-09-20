@@ -22,6 +22,7 @@ Run Sentinel for at least two collection intervals, then compare:
 top -b -n 2 -d 10
 free -b
 df -B1 /
+df -B1 /mnt/block
 cat /proc/loadavg
 ip -s link
 cat /proc/net/dev
@@ -44,6 +45,25 @@ Expect small timing differences: the tools do not sample at exactly the same
 instant. Confirm that network interface selection matches
 `NETWORK_INTERFACES`; otherwise bridges, loopback and veth devices may be
 included.
+
+The Storage panel lists disk-backed mounts separately (including `/boot` and
+`/boot/efi`). Compare device, mountpoint, size, used and available bytes against
+`df -B1`; the UI formats binary units with decimal places. Usage is calculated
+from used / (used + available), so reserved filesystem blocks do not count as
+available. `df` rounds its percentage to a whole number.
+
+For Compose, verify the mounted block disk is visible at the mapped path:
+
+```bash
+docker compose exec sentinel df -B1 /host/root /host/root/mnt/block
+```
+
+Discovery reads `/host/proc/1/mountinfo` and checks the mapped path's device ID
+before reading usage. An inaccessible/mismatched disk must show Unavailable,
+while other disks remain visible. If a disk was mounted after the container was
+created, recreate Sentinel to refresh its bind mounts. Unmounting a disk should
+remove its row on the next collection; stale samples must hide capacity values.
+The existing root disk history and disk alert rules remain scoped to `/`.
 
 ## Container telemetry comparison
 

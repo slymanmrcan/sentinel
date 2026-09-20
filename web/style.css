@@ -137,6 +137,16 @@ main { display: flex; flex-direction: column; gap: 22px; padding: 24px 22px 44px
 .service-summary-grid .service-running-stat > strong { color: var(--green); }
 .service-summary-grid .service-failed-stat > strong { color: var(--red); }
 .container-panel .table-scroll { max-height: 360px; }
+.storage-panel { margin: 12px 0; }
+.storage-table { min-width: 580px; }
+.storage-table td:first-child { color: var(--text-soft); }
+.storage-table td:first-child small { display: block; margin-top: 3px; color: var(--muted); }
+.storage-usage { min-width: 105px; }
+.storage-usage .metric-track { margin: 5px 0 0; }
+.storage-table tr[data-state="warning"] .storage-usage { color: var(--amber); }
+.storage-table tr[data-state="critical"] .storage-usage { color: var(--red); }
+.storage-table tr[data-state="warning"] .metric-track i { background: var(--amber); }
+.storage-table tr[data-state="critical"] .metric-track i { background: var(--red); }
 .container-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .container-name { color: var(--text-soft); font-weight: 650; }
 .container-row-unhealthy td { background: rgba(240,91,104,.035); }

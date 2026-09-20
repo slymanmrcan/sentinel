@@ -193,6 +193,7 @@ function renderRealtime(metric) {
     updatePercentMetric('memory', metric.ram_percent, unavailable.has('memory'));
     updatePercentMetric('disk', metric.disk_percent, unavailable.has('disk'));
     updatePercentMetric('swap', metric.swap_percent, unavailable.has('swap'));
+    renderFilesystems(metric.filesystems, stale, unavailable.has('filesystems'));
 
     setText('cpuCores', metric.cpu_cores || '—');
     setText('cpuTemp', unavailable.has('cpu_temp') ? 'unavailable' : `${Number(metric.cpu_temp).toFixed(1)}°C`);
@@ -233,13 +234,52 @@ function renderRealtime(metric) {
         Number(metric.cpu_percent) || 0,
         Number(metric.ram_percent) || 0,
         Number(metric.disk_percent) || 0,
-        Number(metric.swap_percent) || 0
+        Number(metric.swap_percent) || 0,
+        ...(metric.filesystems || []).filter((fs) => fs.stats_available).map((fs) => Number(fs.used_percent) || 0)
     );
     if (stale) setHealth('offline', 'Stale data');
     else if (peak > 90) setHealth('critical', 'Critical');
     else if (peak > 75) setHealth('warning', 'Watch');
     else if (unavailable.size > 0) setHealth('warning', 'Partial data');
     else setHealth('healthy', 'Healthy');
+}
+
+function renderFilesystems(filesystems, stale, partial) {
+    const body = document.getElementById('filesystemTable');
+    const disks = Array.isArray(filesystems) ? filesystems : [];
+    const incomplete = partial || disks.some((fs) => !fs.stats_available);
+    setText('filesystemState', stale ? 'stale data' : incomplete ? 'some disks unavailable' : disks.length ? `${disks.length} mounted · 30s refresh` : 'unavailable');
+    if (!disks.length) {
+        body.replaceChildren(emptyTableRow(6, 'Mounted disk information unavailable.'));
+        return;
+    }
+    const rows = disks.map((fs) => {
+        const available = fs.stats_available && !stale;
+        const row = document.createElement('tr');
+        row.dataset.state = !available ? 'unavailable' : fs.used_percent > 90 ? 'critical' : fs.used_percent > 75 ? 'warning' : 'healthy';
+        const usage = cell(available ? formatPercent(fs.used_percent) : stale ? 'Stale' : 'Unavailable');
+        usage.className = 'storage-usage';
+        const mount = cell(fs.mountpoint);
+        const device = document.createElement('small');
+        device.textContent = fs.device;
+        mount.appendChild(device);
+        if (available) {
+            const track = document.createElement('div');
+            track.className = 'metric-track';
+            const bar = document.createElement('i');
+            bar.style.width = `${clamp(fs.used_percent)}%`;
+            track.appendChild(bar);
+            usage.appendChild(track);
+        }
+        row.append(
+            mount, cell(fs.fstype),
+            cell(available ? formatBytes(fs.total) : '—'),
+            cell(available ? formatBytes(fs.used) : '—'),
+            cell(available ? formatBytes(fs.available) : '—'), usage
+        );
+        return row;
+    });
+    body.replaceChildren(...rows);
 }
 
 function snapshotIsStale(timestamp, maxAgeSeconds) {
@@ -297,7 +337,7 @@ function renderChart(metrics) {
     const datasets = [
         chartDataset('CPU', '#16d9e5', metrics.map((metric) => chartMetric(metric, 'cpu_percent', 'cpu')), 'percent', false),
         chartDataset('RAM', '#a84df1', metrics.map((metric) => chartMetric(metric, 'ram_percent', 'memory')), 'percent', false),
-        chartDataset('Disk', '#697070', metrics.map((metric) => chartMetric(metric, 'disk_percent', 'disk')), 'percent', true),
+        chartDataset('Root disk', '#697070', metrics.map((metric) => chartMetric(metric, 'disk_percent', 'disk')), 'percent', true),
         chartDataset('Swap', '#f05b68', metrics.map((metric) => chartMetric(metric, 'swap_percent', 'swap')), 'percent', false),
         chartDataset('Net in', '#28d78c', metrics.map((metric) => chartMetric(metric, 'net_rx_bps', 'network')), 'bytes', true),
         chartDataset('Net out', '#d2a546', metrics.map((metric) => chartMetric(metric, 'net_tx_bps', 'network')), 'bytes', true)

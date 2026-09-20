@@ -6,6 +6,7 @@ Kompakt, tek binary olarak dağıtılan host telemetry ve anomaly detection pane
 - `cmd/api` ve `internal/*` paket yapısı
 - HttpOnly oturum cookie’si, CSRF koruması ve brute-force kilidi
 - CPU, bellek, swap, disk, load, network ve disk I/O telemetrisi
+- Bağlı diskler için ayrı kapasite, kullanım ve kullanılabilir alan görünümü
 - Opsiyonel container bazlı CPU, working-set RAM, network ve PID telemetrisi
 - Rolling baseline, z-score anomaly detection ve threshold alert’leri
 - Gömülü, responsive web arayüzü
@@ -242,6 +243,18 @@ Compose kontratı:
 - `pid: host`, read-only `/proc`, `/sys` ve host root mountları kullanır.
 - Root filesystem read-only, capability’ler drop, `no-new-privileges` açıktır.
 - `/data` kalıcı ve yazılabilirdir.
+
+Overview içindeki **Storage · mounted disks**, `/` ve `/mnt/block` gibi bağlı
+diskleri 30 saniyede bir ayrı gösterir. Linux'ta `HOST_PROC/1/mountinfo` üzerinden
+diskler keşfedilir; kapasiteleri `HOST_ROOT` altındaki karşılıklarından okunur.
+`tmpfs`, sanal dosya sistemleri, container overlay'leri ve loop diskleri listelenmez.
+Okunamayan veya Docker içinden doğru cihaza ulaşılmayan disk `Unavailable` görünür.
+Disk sunucuda bağlıyken konteyneri oluşturun; sonradan eklenen mount görünmüyorsa
+`docker compose up -d --force-recreate sentinel` ile yeniden oluşturun.
+
+**Root disk /** kartı, geçmiş grafikler ve mevcut disk alarm kuralları `/` diskine
+aittir. Ek diskler canlı listede gösterilir; disk bazlı geçmiş ve alarm kuralı
+henüz tutulmaz. Canlı genel sağlık göstergesi ek disklerin doluluğunu da dikkate alır.
 
 Önce ağı oluşturun:
 

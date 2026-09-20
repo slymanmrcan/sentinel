@@ -197,6 +197,7 @@ func (c *Collector) Current() store.Metric {
 	defer c.mu.RUnlock()
 	metric := c.current
 	metric.Unavailable = append([]string(nil), metric.Unavailable...)
+	metric.Filesystems = append([]store.Filesystem(nil), metric.Filesystems...)
 	if !freshMetric(metric.Timestamp, time.Now()) {
 		metric.Unavailable = append(metric.Unavailable, "stale")
 	}
@@ -265,6 +266,10 @@ func (c *Collector) snapshot() store.Metric {
 	} else {
 		unavailable = append(unavailable, "disk")
 	}
+	filesystems, filesystemErr := c.filesystems()
+	if filesystemErr != nil {
+		unavailable = append(unavailable, "filesystems")
+	}
 
 	hostName, osName := "sentinel", "Unknown OS"
 	var uptime, processes uint64
@@ -308,6 +313,7 @@ func (c *Collector) snapshot() store.Metric {
 		DiskPercent:  diskPercent,
 		DiskUsed:     diskUsed,
 		DiskTotal:    diskTotal,
+		Filesystems:  filesystems,
 		NetRxBps:     netRxBps,
 		NetTxBps:     netTxBps,
 		NetRxTotal:   netRxTotal,

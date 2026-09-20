@@ -59,6 +59,20 @@ type Metric struct {
 	Uptime       uint64    `json:"uptime,omitempty"`
 	Processes    uint64    `json:"processes,omitempty"`
 	Unavailable  []string  `json:"unavailable,omitempty"`
+
+	// Live mount usage; not persisted in metric history.
+	Filesystems []Filesystem `json:"filesystems,omitempty"`
+}
+
+type Filesystem struct {
+	Device         string  `json:"device"`
+	Mountpoint     string  `json:"mountpoint"`
+	Fstype         string  `json:"fstype"`
+	Total          uint64  `json:"total"`
+	Used           uint64  `json:"used"`
+	Available      uint64  `json:"available"`
+	UsedPercent    float64 `json:"used_percent"`
+	AvailableStats bool    `json:"stats_available"`
 }
 
 type LogEntry struct {

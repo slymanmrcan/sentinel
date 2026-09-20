@@ -91,7 +91,7 @@
                             <div class="metric-meta"><span>used <b id="memoryUsed">—</b></span><span>total <b id="memoryTotal">—</b></span></div>
                         </article>
                         <article class="metric-card" id="diskCard">
-                            <div class="metric-head"><span>Disk</span><em id="diskState">Normal</em></div>
+                            <div class="metric-head"><span>Root disk /</span><em id="diskState">Normal</em></div>
                             <strong class="metric-value" id="diskValue">0.0%</strong>
                             <div class="metric-track"><i id="diskBar"></i></div>
                             <div class="metric-meta"><span>used <b id="diskUsed">—</b></span><span>total <b id="diskTotal">—</b></span></div>
@@ -103,6 +103,16 @@
                             <div class="metric-meta"><span>1m normalized</span><span id="loadHint">per core —</span></div>
                         </article>
                     </div>
+
+                    <article class="panel storage-panel">
+                        <div class="panel-heading"><h3>Storage · mounted disks</h3><span id="filesystemState">loading</span></div>
+                        <div class="table-scroll">
+                            <table class="storage-table">
+                                <thead><tr><th>Mount / device</th><th>Filesystem</th><th>Size</th><th>Used</th><th>Available</th><th>Usage</th></tr></thead>
+                                <tbody id="filesystemTable"><tr><td colspan="6">Loading…</td></tr></tbody>
+                            </table>
+                        </div>
+                    </article>
 
                     <div class="overview-status-grid" aria-label="Operational summary">
                         <a class="panel overview-status-card" id="overviewContainerCard" href="#containers" data-state="unknown">
@@ -151,7 +161,7 @@
                                     <div class="series-controls" aria-label="Visible chart series">
                                         <button class="series-button active cpu" type="button" data-series="0">CPU</button>
                                         <button class="series-button active memory" type="button" data-series="1">RAM</button>
-                                        <button class="series-button disk" type="button" data-series="2">Disk</button>
+                                        <button class="series-button disk" type="button" data-series="2">Root disk</button>
                                         <button class="series-button active swap" type="button" data-series="3">Swap</button>
                                         <button class="series-button net" type="button" data-series="4">Net in</button>
                                         <button class="series-button net" type="button" data-series="5">Net out</button>
