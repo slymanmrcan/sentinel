@@ -246,14 +246,25 @@ function renderRealtime(metric) {
 
 function renderFilesystems(filesystems, stale, partial) {
     const body = document.getElementById('filesystemTable');
+    const cards = document.getElementById('filesystemCards');
+    const system = document.getElementById('filesystemSystem');
     const disks = Array.isArray(filesystems) ? filesystems : [];
+    const isSystemPartition = (fs) => ['/boot', '/boot/efi', '/efi'].includes(fs.mountpoint);
+    const volumes = disks.filter((fs) => !isSystemPartition(fs)).sort((a, b) => {
+        if (a.mountpoint === '/') return -1;
+        if (b.mountpoint === '/') return 1;
+        return String(a.mountpoint).localeCompare(String(b.mountpoint));
+    });
+    const partitions = disks.filter(isSystemPartition);
     const incomplete = partial || disks.some((fs) => !fs.stats_available);
-    setText('filesystemState', stale ? 'stale data' : incomplete ? 'some disks unavailable' : disks.length ? `${disks.length} mounted · 30s refresh` : 'unavailable');
+    setText('filesystemState', stale ? 'stale data' : incomplete ? 'some disks unavailable' : disks.length ? `${volumes.length} storage volume${volumes.length === 1 ? '' : 's'} · 30s refresh` : 'unavailable');
+    system.hidden = !partitions.length;
+    setText('filesystemSystemCount', `(${partitions.length})`);
+    cards.replaceChildren(...volumes.map((fs) => filesystemCard(fs, stale)));
     if (!disks.length) {
-        body.replaceChildren(emptyTableRow(6, 'Mounted disk information unavailable.'));
-        return;
+        cards.replaceChildren(emptyState('Mounted disk information unavailable.'));
     }
-    const rows = disks.map((fs) => {
+    const rows = partitions.map((fs) => {
         const available = fs.stats_available && !stale;
         const row = document.createElement('tr');
         row.dataset.state = !available ? 'unavailable' : fs.used_percent > 90 ? 'critical' : fs.used_percent > 75 ? 'warning' : 'healthy';
@@ -280,6 +291,50 @@ function renderFilesystems(filesystems, stale, partial) {
         return row;
     });
     body.replaceChildren(...rows);
+}
+
+function storageText(tag, className, value) {
+    const element = document.createElement(tag);
+    element.className = className;
+    element.textContent = value;
+    return element;
+}
+
+function filesystemCard(fs, stale) {
+    const available = fs.stats_available && !stale;
+    const status = !available ? 'unavailable' : fs.used_percent > 90 ? 'critical' : fs.used_percent > 75 ? 'warning' : 'healthy';
+    const label = fs.mountpoint === '/' ? 'System disk' : fs.mountpoint === '/mnt/block' ? 'Block storage' : 'Additional storage';
+    const card = document.createElement('article');
+    card.className = 'storage-disk';
+    card.dataset.state = status;
+    card.dataset.kind = fs.mountpoint === '/' ? 'system' : 'additional';
+
+    const header = document.createElement('div');
+    header.className = 'storage-disk-heading';
+    header.append(
+        storageText('h4', 'storage-disk-name', label),
+        storageText('span', 'storage-disk-status', !available ? stale ? 'Stale data' : 'Unavailable' : status === 'critical' ? 'Critical' : status === 'warning' ? 'Near capacity' : 'Normal')
+    );
+    const capacity = document.createElement('div');
+    capacity.className = 'storage-capacity';
+    capacity.append(
+        storageText('strong', 'storage-used', available ? formatBytes(fs.used) : '—'),
+        storageText('span', 'storage-total', available ? `used of ${formatBytes(fs.total)}` : 'Usage unavailable')
+    );
+    const track = document.createElement('div');
+    track.className = 'storage-track';
+    const bar = document.createElement('i');
+    bar.style.width = `${available ? clamp(fs.used_percent) : 0}%`;
+    track.appendChild(bar);
+    const usage = document.createElement('div');
+    usage.className = 'storage-disk-usage';
+    usage.append(
+        storageText('span', 'storage-percent', available ? `${formatPercent(fs.used_percent)} used` : '—'),
+        storageText('strong', 'storage-free', available ? `${formatBytes(fs.available)} available` : 'Available space unknown')
+    );
+    card.append(header, storageText('p', 'storage-mount', fs.mountpoint), capacity, track, usage,
+        storageText('div', 'storage-device', [fs.device, fs.fstype].filter(Boolean).join(' · ')));
+    return card;
 }
 
 function snapshotIsStale(timestamp, maxAgeSeconds) {

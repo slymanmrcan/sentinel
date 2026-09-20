@@ -244,8 +244,10 @@ Compose kontratı:
 - Root filesystem read-only, capability’ler drop, `no-new-privileges` açıktır.
 - `/data` kalıcı ve yazılabilirdir.
 
-Overview içindeki **Storage · mounted disks**, `/` ve `/mnt/block` gibi bağlı
-diskleri 30 saniyede bir ayrı gösterir. Linux'ta `HOST_PROC/1/mountinfo` üzerinden
+Overview içindeki **Storage**, `/` ve `/mnt/block` gibi bağlı diskleri 30 saniyede bir
+ayrı kartlarda gösterir. Ana disk **System disk**, `/mnt/block` **Block storage**
+olarak adlandırılır; kullanım, toplam kapasite ve kullanılabilir alan öne çıkar.
+`/boot`, `/boot/efi` ve `/efi` bölümleri açılır **System partitions** detayındadır. Linux'ta `HOST_PROC/1/mountinfo` üzerinden
 diskler keşfedilir; kapasiteleri `HOST_ROOT` altındaki karşılıklarından okunur.
 `tmpfs`, sanal dosya sistemleri, container overlay'leri ve loop diskleri listelenmez.
 Okunamayan veya Docker içinden doğru cihaza ulaşılmayan disk `Unavailable` görünür.

@@ -105,13 +105,17 @@
                     </div>
 
                     <article class="panel storage-panel">
-                        <div class="panel-heading"><h3>Storage · mounted disks</h3><span id="filesystemState">loading</span></div>
-                        <div class="table-scroll">
-                            <table class="storage-table">
-                                <thead><tr><th>Mount / device</th><th>Filesystem</th><th>Size</th><th>Used</th><th>Available</th><th>Usage</th></tr></thead>
-                                <tbody id="filesystemTable"><tr><td colspan="6">Loading…</td></tr></tbody>
-                            </table>
-                        </div>
+                        <div class="panel-heading"><h3>Storage</h3><span id="filesystemState">loading</span></div>
+                        <div class="storage-disks" id="filesystemCards"><div class="empty-state">Loading disks…</div></div>
+                        <details class="storage-system" id="filesystemSystem" hidden>
+                            <summary>System partitions <span id="filesystemSystemCount"></span></summary>
+                            <div class="table-scroll">
+                                <table class="storage-table">
+                                    <thead><tr><th>Mount / device</th><th>Filesystem</th><th>Size</th><th>Used</th><th>Available</th><th>Usage</th></tr></thead>
+                                    <tbody id="filesystemTable"></tbody>
+                                </table>
+                            </div>
+                        </details>
                     </article>
 
                     <div class="overview-status-grid" aria-label="Operational summary">
