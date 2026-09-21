@@ -16,6 +16,7 @@ import (
 	"github.com/slymanmrcan/sentinel/internal/auth"
 	"github.com/slymanmrcan/sentinel/internal/config"
 	"github.com/slymanmrcan/sentinel/internal/monitor"
+	"github.com/slymanmrcan/sentinel/internal/notify"
 	"github.com/slymanmrcan/sentinel/internal/store"
 	webassets "github.com/slymanmrcan/sentinel/web"
 )
@@ -23,11 +24,12 @@ import (
 const maxAuthBodyBytes = 4 << 10
 
 type Server struct {
-	cfg       config.Config
-	store     *store.Store
-	auth      *auth.Service
-	collector *monitor.Collector
-	handler   http.Handler
+	notifications *notify.Engine
+	cfg           config.Config
+	store         *store.Store
+	auth          *auth.Service
+	collector     *monitor.Collector
+	handler       http.Handler
 }
 
 type authedHandler func(http.ResponseWriter, *http.Request, auth.Principal)
@@ -77,6 +79,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/logs", s.requireAuth(s.handleLogs))
 	mux.HandleFunc("DELETE /api/logs", s.requireAuth(s.handleLogs))
 	mux.HandleFunc("GET /api/anomalies", s.requireAuth(s.handleAnomalies))
+	mux.HandleFunc("GET /api/notifications/telegram", s.requireAuth(s.handleTelegramStatus))
+	mux.HandleFunc("POST /api/notifications/telegram/test", s.requireAuth(s.handleTelegramTest))
 	mux.HandleFunc("GET /api/alerts/rules", s.requireAuth(s.handleAlertRules))
 	mux.HandleFunc("GET /api/alerts/events", s.requireAuth(s.handleAlertEvents))
 	mux.HandleFunc("GET /api/export/metrics.csv", s.requireAuth(s.handleExportMetrics))

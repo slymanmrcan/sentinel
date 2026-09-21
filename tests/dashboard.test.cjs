@@ -122,3 +122,16 @@ test('boot partitions stay in expandable details and preserve open state across 
     assert.equal(d.element('filesystemSystem').hidden, true);
     assert.equal(d.element('filesystemTable').children.length, 0);
 });
+
+test('Telegram status shows safe delivery details and only enables admin test control', async () => {
+    const d = dashboard();
+    d.run(`state.user={role:'viewer'}; apiFetch=async()=>({ok:true,json:async()=>({enabled:true,pending:2,last_success:'0001-01-01T00:00:00Z',last_failure:'2026-09-21T00:00:00Z',last_error:'Telegram hız sınırı (429)',storage_error:'',dropped:3,ssh:'Kapalı'})});`);
+    await d.run('loadTelegram()');
+    assert.equal(d.element('telegramState').textContent, 'Telegram etkin');
+    assert.match(d.element('telegramDelivery').textContent, /Bekleyen: 2/);
+    assert.match(d.element('telegramHealth').textContent, /429/);
+    assert.equal(d.element('telegramTest').hidden, true);
+    d.run(`state.user={role:'admin'};`);
+    await d.run('loadTelegram()');
+    assert.equal(d.element('telegramTest').hidden, false);
+});

@@ -312,6 +312,22 @@
                     </div>
                 </section>
 
+                <section class="dashboard-section" id="notifications">
+                    <div class="section-title"><h2>Telegram bildirimleri</h2><span>Sentinel entegrasyonu</span></div>
+                    <article class="panel">
+                        <div class="panel-heading">
+                            <h3 id="telegramState">Durum yükleniyor…</h3>
+                            <button class="text-action" id="telegramTest" type="button" hidden>Test bildirimi gönder</button>
+                        </div>
+                        <div class="event-list" aria-live="polite">
+                            <p id="telegramDelivery">Gönderim bilgisi bekleniyor.</p>
+                            <p id="telegramHealth"></p>
+                            <p id="telegramSSH"></p>
+                            <p id="telegramTestResult"></p>
+                        </div>
+                    </article>
+                </section>
+
                 <section class="dashboard-section" id="events">
                     <div class="section-title"><h2>Events</h2><span>retained for 7 days</span></div>
                     <article class="panel">

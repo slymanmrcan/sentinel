@@ -25,6 +25,7 @@ sentinel/
 │   ├── config/              # Ortam değişkeni kontratı
 │   ├── httpapi/             # Router, middleware ve HTTP handler'ları
 │   ├── monitor/             # Host collector, anomaly ve alert engine
+│   ├── notify/              # Telegram outbox, bildirim durumu ve zamanlama
 │   └── store/               # DuckDB migration ve sorguları
 ├── web/                     # Binary içine gömülen UI dosyaları
 ├── Dockerfile
@@ -43,6 +44,143 @@ flowchart LR
     Monitor --> Host["/proc · /sys · host root"]
     Monitor -. opt-in .-> Docker["Docker Engine API"]
 ```
+
+## Telegram bildirimleri
+
+Telegram isteğe bağlıdır ve varsayılan olarak kapalıdır. Yeni izleme servisi, Redis,
+ayrı veritabanı veya bot SDK'sı gerektirmez. Collector'ın mevcut 30 saniyelik
+ölçümlerini, DuckDB `alert_rules` eşiklerini, mevcut login kilidini ve ortak systemd
+önbelleğini kullanır. Telegram üzerinden komut veya sunucu yönetimi yoktur.
+
+Sunucu tarafındaki `.env` dosyasında örnek etkinleştirme:
+
+```dotenv
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=<BotFather tarafından verilen token>
+TELEGRAM_CHAT_ID=<sayısal özel sohbet veya grup kimliği>
+TELEGRAM_TIMEZONE=Europe/Istanbul
+TELEGRAM_SUMMARY_TIMES=09:00,15:00,21:00
+TELEGRAM_ALERT_HOLD=2m
+TELEGRAM_RECOVERY_MARGIN=5
+TELEGRAM_BRUTE_WINDOW=5m
+TELEGRAM_BRUTE_THRESHOLD=5
+TELEGRAM_SSH_ENABLED=false
+SYSTEMD_UNITS=fail2ban.service,ssh.service
+```
+
+Bot ile önce sohbet başlatın veya botu hedef gruba ekleyin; gruplarda chat ID negatif
+olabilir. Token ve chat ID yalnızca sunucuda tutulur; API/panel bu değerleri göstermez.
+Token içeren URL'ler ve Telegram'ın ham hata açıklamaları loglanmaz. Sunucunun
+`api.telegram.org:443` adresine erişebilmesi gerekir. Gönderimler standart Go HTTP
+istemcisiyle [Telegram Bot API](https://core.telegram.org/bots/api#sendmessage)
+üzerinden yapılır. Ortam değişkenleri başlangıçta okunur; bu geliştirme sırasında
+çalışan servis yeniden başlatılmadı veya dağıtılmadı.
+
+Panelde **Telegram bildirimleri** alanı etkinlik durumunu, bekleyen mesaj sayısını,
+son başarılı/başarısız gönderim zamanlarını, depolama hatasını ve atlanan olay
+sayısını gösterir. Yönetici **Test bildirimi gönder** düğmesini kullanabilir.
+İstek mevcut oturum, origin ve CSRF doğrulamasından geçer; kabul yanıtı teslimat
+onayı değildir. Testler en fazla dakikada bir işlenir. Durum API'si
+`GET /api/notifications/telegram`, test API'si `POST /api/notifications/telegram/test`.
+
+### Alarm ve toparlanma
+
+CPU/RAM/disk/swap için mevcut alarm kurallarının yüksek eşikleri kullanılır.
+Varsayılan kurallar CPU/RAM %90, disk %85, swap %50'dir. Telegram bildirimi için
+varsayılan olarak iki dakika boyunca koşulun devam etmesi gerekir; toparlanma
+aynı süre boyunca eşikten en az 5 yüzde puan aşağıda kalmalıdır. Örneğin CPU
+%90'da alarm, %85 ve altında toparlanma adayı olur. `TELEGRAM_ALERT_HOLD`
+30 saniye–1 saat, `TELEGRAM_RECOVERY_MARGIN` 1–30 yüzde puan arasında ayarlanabilir.
+Mevcut panel alarm geçmişinin eşik/kayıt davranışı korunur; bekleme ve toparlanma
+bildirim katmanında uygulanır. Sürenin dolması yeni, geçerli bir ölçümle doğrulanır.
+
+Kök diske ek olarak collector'ın izlediği diğer dosya sistemleri aynı disk kuralını
+kullanır. Bildirim tarafı en fazla 128 dosya sistemi, 32 kural ve 256 alarm durumu
+tutar. `SYSTEMD_UNITS` servisleri panel kapalıyken de dakikada bir ortak önbellekten
+kontrol edilir; `inactive`/`failed` sorun, `active` toparlanmadır. Başlatılıyor,
+bulunamadı veya okunamıyor durumları sağlıklı kabul edilmez. Eski, eksik ve başarısız
+ölçümler toparlanma üretmez ve devam eden bekleme süresini keser. Aktif alarm durumu
+restart sonrasında korunur; bekleme süresi yeni ölçümlerle yeniden başlar.
+
+### Günlük özet ve giriş takibi
+
+Özetler varsayılan olarak Europe/Istanbul saat diliminde 09:00, 15:00 ve 21:00'de
+üretilir. İki mesaj için `TELEGRAM_SUMMARY_TIMES=09:00,21:00`; yalnızca sorun
+bildirimleri için boş bırakın. En fazla altı benzersiz `HH:MM` saati ve geçerli bir
+IANA saat dilimi kabul edilir; saat dilimi verisi binary'ye gömülüdür. Özet sunucu,
+uptime, CPU/RAM/swap, diskler, servisler ve son başarılı özetten sonraki bildirim
+olaylarını içerir. Eski/alınamayan ölçümler açıkça işaretlenir. Uzun listeler mesaj
+sınırında kısaltılır; önemli olaylar için ayrı alan ayrılır. Olay geçmişi en çok
+50 kayıt / 7 günle sınırlıdır; keyfi panel olay metinleri ve ham loglar gönderilmez.
+
+Zaman dilimi kaydı ve outbox aynı DuckDB kaydında atomik saklanır. Aynı yerel zaman
+aralığı restart veya yaz saati geri dönüşünde yeniden üretilmez. Yalnızca planlanan
+saatten sonraki iki dakika uygundur; geçmiş saatler telafi edilmez. Kuyruktaki
+özet on dakikada sona erer; eski özetler bağlantı geri geldiğinde birikerek gönderilmez.
+
+Sentinel giriş takibi **yalnızca Sentinel paneline** yapılan başarısız parola
+kontrollerini ve mevcut IP kilidi nedeniyle reddedilen girişleri sayar. Tek yanlış
+parola bildirim üretmez. Varsayılan eşik beş dakikada beş reddedilen denemedir;
+aynı IP ve farklı IP'lerden aynı normalize hesaba yönelme ayrı değerlendirilir.
+Pencere ilk olayla başlar, sabit sürelidir; her sayaç pencere başına bir bildirim
+üretir. Eşik 3–1000, pencere 1 dakika–1 saat olabilir. Mesaj hedefi, zaman aralığını,
+sayıyı, kilitli ret sayısını ve en fazla sekiz doğrulanmış kaynak IP'yi içerir.
+Hesap adı yerine kısa SHA-256 kimlik izi kullanılır. Parola, cookie, Authorization,
+ham istek ve ham servis logu gönderilmez. Global parola bütçesi veya eşzamanlılık
+limiti nedeniyle parola kontrolüne girmeyen istekler başarısız parola sayılmaz.
+
+Kaynak IP mevcut `TRUST_PROXY_HEADERS` politikasıyla aynıdır: varsayılan olarak
+socket adresi; açıkken doğrulanan en sağdaki `X-Forwarded-For` adresi. Bu ayarı
+ancak doğrudan erişim güvenilir proxy ile sınırlandırılmışsa açın. İstemcinin
+başlığın başına eklediği sahte IP kullanılmaz. Bu özellik tüm sunucu için saldırı
+tespiti veya koruma iddiası taşımaz; otomatik IP engelleme yapmaz.
+
+`TELEGRAM_SSH_ENABLED=true` ayrı ve isteğe bağlı OpenSSH journal takibini açar.
+`journalctl`, sistem journal okuma izni ve `ssh.service`/`sshd.service` kayıtları
+gerekir; mevcut `HOST_ROOT` desteklenir. İlk okuma son kaydı başlangıç noktası
+seçer; sonraki okumalar kayıt cursor'ı ve son iki dakika ile sınırlıdır. Dakikada
+bir, en fazla 201 kayıt / 1 MiB çıktı / üç saniye okunur; en fazla 200 tanınan
+olay işlenir. Yoğunlukta atlanan kayıtlar panelde **Kısmi** olarak gösterilir.
+Yalnızca OpenSSH `Failed password/publickey` kayıtları yorumlanır; başka SSH
+sunucuları, özel unit adları ve düz metin auth.log bu sürümde kapsanmaz. Erişim
+yoksa veya erişim kayıtla doğrulanamıyorsa panelde **Kullanılamıyor** görünür;
+boş journal sağlıklı sunucu kanıtı değildir. Cursor geçersizleşirse eski log
+tekrar taranmaz, yeni başlangıç noktası alınır.
+
+### Sınırlar ve teslimat
+
+- Kapalıyken Telegram çalışanı, zamanlayıcısı, SSH taraması ve Telegram ağ trafiği yoktur.
+- Açıkken bir koordinatör ve bir gönderim çalışanı vardır. Girişler beklemez:
+  metrik kanalı 2, giriş olayı kanalı 256, test kanalı 1 kayıtla sınırlıdır.
+- Outbox mevcut DuckDB `settings` tablosunda tek, sınırlı JSON kaydıdır; en fazla
+  128 mesaj tutulur. Mesajlar en fazla 3500 Unicode karakterdir. Alarm/güvenlik
+  mesajları özetlerden önce gönderilir; dolulukta düşük öncelikli özet atılabilir.
+  Tekrarlanan bekleyen olaylar birleştirilir; henüz teslim edilmemiş alarm yerine
+  en son durum geçişi tutulur. Diğer taşmalar yerel sayaçta görünür.
+- En fazla üç saniyede bir gönderim, yeniden kullanılan HTTP bağlantısı ve
+  10 saniye timeout uygulanır. Geçici hatalarda artan bekleme ve en çok altı
+  deneme vardır; 429 `retry_after` tüm gönderimleri bekletir. Kalıcı 4xx hataları
+  tekrar edilmez. Alarm/test mesajlarının ömrü en fazla 24 saattir.
+- IP/hesap sayaçlarının toplam sınırı 1024, her birinin IP örnek listesi sekizdir.
+  Süresi dolan sayaçlar temizlenir; sayaçlar restart'ta sıfırlanır. Kapasite
+  sınırında yeni olaylar atlanabilir; bu bir kayıpsız güvenlik kayıt sistemi değildir.
+- Olay kabulü ile diske yazma arasındaki kısa aralıkta ani süreç kaybı olay
+  kaybettirebilir. Kalıcı kuyruğa alınan mesajlar restart sonrasında korunur.
+  Ağ timeout'unda veya Telegram kabulünden sonra süreç/DB arızasında teslimat
+  belirsiz olabilir ve yinelenen mesaj mümkündür; **tam olarak bir kez teslimat
+  garantisi yoktur**. Başarı, Telegram API kabulünü gösterir; kullanıcının okuduğunu değil.
+- DuckDB hatasında gönderim bekletilir, sınırlı bellek durumu korunur ve panel/log
+  hata gösterir; Telegram hatası collector'ı veya giriş akışını ağ yanıtı beklemeye
+  zorlamaz. Outbox yazımları iki saniyeyle sınırlıdır; mevcut tek DuckDB bağlantısı
+  paylaşıldığı için kısa veritabanı çekişmesi mümkündür. Saklanan kayıt sayıları
+  sınırlıdır; DuckDB dosyasının fiziksel boyutu WAL/checkpoint davranışına da bağlıdır.
+
+**Sunucu tamamen kapanırsa veya dış ağ bağlantısı kesilirse aynı sunucudaki
+Sentinel Telegram mesajı gönderemez. Harici heartbeat servisi bu çalışmanın
+kapsamında değildir.**
+
+Test kapsamı, mevcut kontrol bulguları ve kaynak ölçüm koşulları:
+[Telegram doğrulama notları](docs/telegram-validation.md).
 
 ## İlk çalıştırma
 

@@ -13,6 +13,7 @@ import (
 )
 
 type Config struct {
+	Telegram          Telegram
 	Port              string
 	DBPath            string
 	AdminLogin        string
@@ -85,7 +86,12 @@ func Load() (Config, error) {
 		adminLogin = "admin"
 	}
 
+	telegram, err := loadTelegram()
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
+		Telegram:          telegram,
 		Port:              envOr("PORT", "8000"),
 		DBPath:            envOr("DB_PATH", "metrics.db"),
 		AdminLogin:        strings.ToLower(adminLogin),

@@ -45,7 +45,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadContainers(),
         loadAnalysis(),
         loadAlerts(),
-        loadEvents()
+        loadEvents(),
+        loadTelegram()
     ]);
 
     window.setInterval(loadRealtime, pollingIntervals.realtime);
@@ -54,6 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.setInterval(loadAnalysis, pollingIntervals.analysis);
     window.setInterval(loadAlerts, pollingIntervals.alerts);
     window.setInterval(loadEvents, pollingIntervals.events);
+    window.setInterval(loadTelegram, 30000);
 });
 
 function bindUI() {
@@ -104,6 +106,7 @@ function bindUI() {
         document.getElementById('accountDialog').showModal();
     });
     document.getElementById('passwordForm').addEventListener('submit', changePassword);
+    document.getElementById('telegramTest')?.addEventListener('click', testTelegram);
 
     if ('IntersectionObserver' in window) {
         const observer = new IntersectionObserver((entries) => {
@@ -1323,4 +1326,36 @@ function emptyState(message) {
     element.className = 'empty-state';
     element.textContent = message;
     return element;
+}
+
+async function loadTelegram() {
+    try {
+        const response = await apiFetch('/api/notifications/telegram');
+        if (!response.ok) throw new Error('Durum alınamadı');
+        const status = await response.json();
+        setText('telegramState', status.enabled ? 'Telegram etkin' : 'Telegram kapalı');
+        const timestamp = (value) => value && !value.startsWith('0001-') ? new Date(value).toLocaleString('tr-TR') : 'Yok';
+        setText('telegramDelivery', `Son başarılı: ${timestamp(status.last_success)} · Son başarısız: ${timestamp(status.last_failure)} · Bekleyen: ${status.pending}`);
+        setText('telegramHealth', [status.storage_error, status.last_error, status.dropped ? `Atlanan bildirim/olay: ${status.dropped}` : ''].filter(Boolean).join(' · '));
+        setText('telegramSSH', `SSH takibi: ${status.ssh}. Sentinel giriş takibi yalnızca panel girişlerini kapsar.`);
+        const button = document.getElementById('telegramTest');
+        if (button) button.hidden = !status.enabled || state.user?.role !== 'admin';
+    } catch {
+        setText('telegramState', 'Telegram durumu alınamıyor');
+    }
+}
+
+async function testTelegram() {
+    const button = document.getElementById('telegramTest');
+    button.disabled = true;
+    try {
+        const response = await apiFetch('/api/notifications/telegram/test', { method: 'POST' });
+        const payload = await response.json();
+        setText('telegramTestResult', response.ok ? payload.message : (payload.error || 'Test isteği başarısız'));
+        await loadTelegram();
+    } catch {
+        setText('telegramTestResult', 'Test isteği gönderilemedi.');
+    } finally {
+        button.disabled = false;
+    }
 }

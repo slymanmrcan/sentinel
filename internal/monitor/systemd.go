@@ -64,7 +64,8 @@ type systemCommandRunner interface {
 }
 
 type execSystemCommandRunner struct {
-	hostRoot string
+	strictJournal bool
+	hostRoot      string
 }
 
 type cappedBuffer struct {
@@ -107,6 +108,9 @@ func (r execSystemCommandRunner) Run(ctx context.Context, name string, args ...s
 			return stdout.buffer.Bytes(), fmt.Errorf("%w: %s", err, message)
 		}
 		return stdout.buffer.Bytes(), err
+	}
+	if r.strictJournal && strings.TrimSpace(stderr.buffer.String()) != "" {
+		return nil, errors.New("journal access could not be verified")
 	}
 	return stdout.buffer.Bytes(), nil
 }

@@ -21,10 +21,12 @@ import (
 )
 
 type Collector struct {
-	store   *store.Store
-	cfg     config.Config
-	current store.Metric
-	mu      sync.RWMutex
+	// Set before Start; the observer must be nonblocking.
+	AlertObserver func(store.Metric, []store.AlertRule)
+	store         *store.Store
+	cfg           config.Config
+	current       store.Metric
+	mu            sync.RWMutex
 
 	throughputMu sync.Mutex
 	lastSample   ioSample
@@ -487,6 +489,9 @@ func (c *Collector) evaluateAlerts(ctx context.Context, metric store.Metric) {
 	if err != nil {
 		log.Printf("alert rules unavailable: %v", err)
 		return
+	}
+	if c.AlertObserver != nil {
+		c.AlertObserver(metric, rules)
 	}
 	values := map[string]float64{
 		"cpu": metric.CPUPercent, "memory": metric.RAMPercent,

@@ -34,8 +34,10 @@ const (
 var dummyHash = []byte("$2a$10$7EqJtq98hPqEX7fNZaFWoO5YtO6YQYQzUqFQfYyJqT0pM6GCrh/7y")
 
 type Service struct {
-	store *store.Store
-	cfg   config.Config
+	// Installed before serving requests; observer must not block or perform IO.
+	FailureObserver func(ip, account string, locked bool)
+	store           *store.Store
+	cfg             config.Config
 	// Serialize login checks so concurrent failures cannot bypass the lockout.
 	// TryLock rejects excess work instead of queuing expensive password checks.
 	loginMu sync.Mutex
@@ -155,6 +157,9 @@ func (s *Service) Login(ctx context.Context, r *http.Request, login, password st
 		return LoginResult{}, "", fmt.Errorf("read login lockout: %w", err)
 	}
 	if remaining > 0 {
+		if s.FailureObserver != nil {
+			s.FailureObserver(s.clientIP(r), login, true)
+		}
 		return LoginResult{}, "", &LockoutError{Remaining: remaining}
 	}
 	if wait := s.budget.take(time.Now()); wait > 0 {
@@ -162,11 +167,17 @@ func (s *Service) Login(ctx context.Context, r *http.Request, login, password st
 	}
 
 	user, lookupErr := s.store.UserByLogin(ctx, login)
+	if lookupErr != nil && !store.IsNotFound(lookupErr) {
+		return LoginResult{}, "", fmt.Errorf("lookup login: %w", lookupErr)
+	}
 	hash := dummyHash
 	if lookupErr == nil {
 		hash = []byte(user.PasswordHash)
 	}
 	if bcrypt.CompareHashAndPassword(hash, []byte(password)) != nil || lookupErr != nil {
+		if s.FailureObserver != nil {
+			s.FailureObserver(s.clientIP(r), login, false)
+		}
 		// A client disconnect after password verification must not erase a
 		// failed attempt. Bound the write independently of the request lifetime.
 		failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
