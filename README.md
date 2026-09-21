@@ -73,8 +73,26 @@ olabilir. Token ve chat ID yalnızca sunucuda tutulur; API/panel bu değerleri g
 Token içeren URL'ler ve Telegram'ın ham hata açıklamaları loglanmaz. Sunucunun
 `api.telegram.org:443` adresine erişebilmesi gerekir. Gönderimler standart Go HTTP
 istemcisiyle [Telegram Bot API](https://core.telegram.org/bots/api#sendmessage)
-üzerinden yapılır. Ortam değişkenleri başlangıçta okunur; bu geliştirme sırasında
-çalışan servis yeniden başlatılmadı veya dağıtılmadı.
+üzerinden yapılır. Ortam değişkenleri yalnızca başlangıçta okunur. `.env`
+değişikliğinden sonra yerel servisi yeniden başlatın. Docker Compose kullanırken
+`docker compose up -d --build --force-recreate sentinel` çalıştırın; yalnızca
+`docker compose restart` yeni ortam değişkenlerini container'a aktarmaz.
+
+Proje dizininden gerçek gönderimi hemen sınamak için:
+
+```sh
+make telegram-test
+# Güncel imajla yeniden oluşturulmuş container içinde:
+docker compose exec sentinel /app/sentinel telegram-test
+```
+
+Bu komut `.env`/ortam ayarlarını okuyup normal bildirimlerle aynı gönderim kodunu
+kullanarak tek bir test mesajı yollar ve Telegram API yanıtını bekler. Başarısızsa
+sıfırdan farklı çıkış kodu verir; token/chat ID yazdırmaz. Veritabanını açmaz,
+collector başlatmaz ve paneldeki son gönderim durumunu güncellemez. Yerelde başarılı
+olması sunucudaki container'ın ayarlarının yüklendiğini doğrulamaz; sunucuda da
+container içindeki komutu çalıştırın. Açılışta otomatik mesaj gönderilmez; normal
+bildirimler alarm koşulları oluştuğunda veya ayarlanan özet saatlerinde gönderilir.
 
 Panelde **Telegram bildirimleri** alanı etkinlik durumunu, bekleyen mesaj sayısını,
 son başarılı/başarısız gönderim zamanlarını, depolama hatasını ve atlanan olay

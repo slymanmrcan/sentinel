@@ -1,4 +1,4 @@
-.PHONY: all build run clean test docker-build docker-up docker-down docker-logs fmt vet lint vulncheck check
+.PHONY: all build run clean test telegram-test docker-build docker-up docker-down docker-logs fmt vet lint vulncheck check
 
 BINARY_NAME=bin/sentinel
 
@@ -12,6 +12,9 @@ build:
 run: build
 	@echo "Running sentinel locally on port 8000..."
 	./$(BINARY_NAME)
+
+telegram-test:
+	go run ./cmd/api telegram-test
 
 clean:
 	@echo "Cleaning up build artifacts..."
