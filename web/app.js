@@ -1338,6 +1338,14 @@ async function loadTelegram() {
         setText('telegramDelivery', `Son başarılı: ${timestamp(status.last_success)} · Son başarısız: ${timestamp(status.last_failure)} · Bekleyen: ${status.pending}`);
         setText('telegramHealth', [status.storage_error, status.last_error, status.dropped ? `Atlanan bildirim/olay: ${status.dropped}` : ''].filter(Boolean).join(' · '));
         setText('telegramSSH', `SSH takibi: ${status.ssh}. Sentinel giriş takibi yalnızca panel girişlerini kapsar.`);
+        const cpu = status.cpu;
+        if (status.enabled && cpu) {
+            const reference = cpu.history_ready ? `%${Number(cpu.typical_percent).toFixed(1)}` : 'yetersiz / alınamıyor';
+            const measurement = cpu.measurement_available ? '' : ' · Güncel CPU ölçümü yok';
+            setText('telegramCPU', `CPU normal seviyesi: ${reference} · Erken uyarı: %${Number(cpu.warning_threshold).toFixed(1)} · Kritik: %${cpu.critical_threshold}${cpu.frozen ? ' · Referans sabit tutuluyor' : ''}${measurement}. ${cpu.message || ''}`);
+        } else {
+            setText('telegramCPU', '');
+        }
         const button = document.getElementById('telegramTest');
         if (button) button.hidden = !status.enabled || state.user?.role !== 'admin';
     } catch {

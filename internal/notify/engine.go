@@ -50,6 +50,7 @@ type event struct {
 	Text string
 }
 type persisted struct {
+	CPU                      cpuState
 	Queue                    []message
 	Alarms                   map[string]alarm
 	Events                   []event
@@ -78,6 +79,7 @@ type bucket struct {
 }
 
 type Status struct {
+	CPU          CPUStatus `json:"cpu"`
 	Enabled      bool      `json:"enabled"`
 	Pending      int       `json:"pending"`
 	LastSuccess  time.Time `json:"last_success"`
@@ -89,30 +91,36 @@ type Status struct {
 }
 
 type Engine struct {
-	cfg           config.Telegram
-	db            repository
-	source        source
-	sender        *telegramSender
-	location      *time.Location
-	samples       chan sample
-	failures      chan failure
-	tests         chan struct{}
-	dropped       atomic.Uint64
-	statusMu      sync.RWMutex
-	status        Status
-	p             persisted
-	counters      map[string]*bucket
-	dirty, loaded bool
-	inflight      string
-	lastTest      time.Time
-	services      monitor.SystemdSnapshot
-	ssh           *monitor.SSHJournal
+	nextCPURefresh          time.Time
+	cpuHistoryIssue         string
+	cpuMeasurementAvailable bool
+	cfg                     config.Telegram
+	db                      repository
+	source                  source
+	sender                  *telegramSender
+	location                *time.Location
+	samples                 chan sample
+	failures                chan failure
+	tests                   chan struct{}
+	dropped                 atomic.Uint64
+	statusMu                sync.RWMutex
+	status                  Status
+	p                       persisted
+	counters                map[string]*bucket
+	dirty, loaded           bool
+	inflight                string
+	lastTest                time.Time
+	services                monitor.SystemdSnapshot
+	ssh                     *monitor.SSHJournal
 }
 
 func New(cfg config.Config, db repository, src source) *Engine {
 	e := &Engine{cfg: cfg.Telegram, db: db, source: src, status: Status{Enabled: cfg.Telegram.Enabled, SSH: "Kapalı"}}
 	if !e.cfg.Enabled {
 		return e
+	}
+	if e.cfg.CPU.Warning == 0 {
+		e.cfg.CPU = config.DefaultCPUAlerts()
 	}
 	e.location, _ = time.LoadLocation(e.cfg.Timezone)
 	if e.location == nil {
@@ -128,6 +136,7 @@ func New(cfg config.Config, db repository, src source) *Engine {
 		e.ssh = monitor.NewSSHJournal(cfg.HostRoot)
 		e.status.SSH = "Erişim henüz doğrulanmadı"
 	}
+	e.status.CPU = e.cpuStatus(time.Now())
 	return e
 }
 
@@ -195,6 +204,7 @@ func (e *Engine) Status() Status {
 func (e *Engine) publish() {
 	e.statusMu.Lock()
 	defer e.statusMu.Unlock()
+	e.status.CPU = e.cpuStatus(time.Now())
 	e.status.Pending = len(e.p.Queue)
 	e.status.LastSuccess = e.p.LastSuccess
 	e.status.LastFailure = e.p.LastFailure
@@ -232,6 +242,8 @@ func (e *Engine) load(ctx context.Context) bool {
 			if e.p.Alarms == nil {
 				e.p.Alarms = make(map[string]alarm)
 			}
+			e.p.CPU.resetHolds()
+			e.p.CPU.Last = time.Time{}
 			// Require a fresh continuous hold after any restart, but retain active alarms.
 			for k, a := range e.p.Alarms {
 				a.Pending = time.Time{}
@@ -308,6 +320,8 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		case s := <-e.samples:
 			if e.loaded {
+				now := time.Now()
+				e.refreshCPUReference(ctx, s, now)
 				e.evaluate(s, time.Now())
 			}
 		case f := <-e.failures:
@@ -379,6 +393,7 @@ func (e *Engine) enqueue(key, text string, priority int, now time.Time, seq uint
 			}
 			m.Text = clip(text+"\nTekrarlanan olaylar birleştirildi.", messageLimit)
 			m.EventSeq = max(m.EventSeq, seq)
+			m.Priority = max(m.Priority, priority)
 			// Keep original TTL/retry budget, but order the latest transition last.
 			e.p.Queue = append(e.p.Queue[:i], e.p.Queue[i+1:]...)
 			e.p.Queue = append(e.p.Queue, m)

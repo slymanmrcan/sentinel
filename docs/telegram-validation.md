@@ -8,7 +8,7 @@ Testler kendi geçici DuckDB dosyalarını kullandı; mevcut veritabanına dokun
 
 - `go test -race -coverprofile=/tmp/sentinel-telegram-coverage.out ./...` başarılı.
   Son eklenen senaryolar ayrıca `go test -race ./internal/notify` ile doğrulandı.
-- `node --test tests/dashboard.test.cjs`: 10 test başarılı.
+- `node --test tests/dashboard.test.cjs`: 11 test başarılı.
 - `go vet ./...`, `go build -o /tmp/sentinel-telegram-validation ./cmd/api`,
   `git diff --check` ve Go biçim kontrolleri başarılı.
 - `golangci-lint run ./internal/notify`: sıfır bulgu.
@@ -44,7 +44,55 @@ HTTP testleri enjekte edilmiş sahte `RoundTripper`, SSH testleri sahte komut
 çalıştırıcısı kullanır. Gerçek Linux systemd/journal izinleri ve gerçek Telegram
 bot/sohbet yetkileri bu macOS ortamında uçtan uca doğrulanmadı.
 
+## Uyarlanabilir CPU bildirimi eklemesi
+
+CPU, mevcut collector örneklerini kullanır; yeni bir host ölçümü veya ayrı
+izleme işi eklenmedi. Aynı hostun son 24 saatlik geçerli düşük yük kayıtları
+DuckDB'de medyanla özetlenir; son beş dakika dışarıda kalır. Referans en fazla
+beş dakikada bir sorgulanır ve yükseliş/aktif olay boyunca dondurulur. Sabit
+%35 tabanı, üç kat koşulu, %80 kritik ve %20 toparlanma sınırları sunucu
+yapılandırmasından değiştirilebilir. Eski RAM/disk/swap/servis ve paneldeki
+bir saatlik anomali davranışları korunur.
+
+Eklenen testler: %35 mutlak taban ile göreli artışın birlikte aranması,
+%80 bağımsız kritik sınırı, 5/2/3 dakikalık beklemeler, kısa yükselişin sönmesi,
+uyarıdan kritiğe geçiş, tek toparlanma, sıfır CPU'nun geçerli veri olması,
+eksik/NaN/aralık dışı/eski/yinelenen ölçümler, seyrek/yetersiz geçmiş,
+veritabanı kesintisinde önbellek ve sabit eşik, sorgunun beş dakika
+önbelleklenmesi, uzun yükselişte referansın değişmemesi, host ayrımı,
+eski CPU alarmının tekrarlanmadan devralınması, restart'ta referans/olay/outbox
+korunması, dolu kuyruk ve collector'ı bekletmeyen geçmiş sorgusu.
+
+Yeni SQL testi gerçek geçici DuckDB kullanır; farklı host, son beş dakika,
+24 saat dışı, NULL, NaN, sonsuz ve yüksek CPU değerlerinin normal referansa
+karışmadığını doğrular. Panel testi, eksik referansın %0 gibi gösterilmemesini
+ve donmuş referans/eşik bilgilerinin görünmesini doğrular.
+
+Tam `go test -race ./...` ve son değişiklikler için ilgili paketlerin yarış
+kontrolleri başarılıdır. Bildirim/yapılandırma paketlerinin lint sonucu sıfır
+bulgudur. `make check` test ve vet aşamalarını geçip yukarıdaki mevcut lint
+bulgularında durdu; ayrıca tekrar çalıştırılan güvenlik taraması aynı beş Go
+standart kitaplığı bulgusunu raporladı. Çalışan servis veya veritabanı değiştirilmedi.
+
+Referans sorgusunun mikro ölçümü: Apple M4, macOS arm64, Go 1.26.5, geçici gerçek
+DuckDB; 30 saniyelik 86.400 sentetik kayıt (30 gün), tek host, aralıklı %90
+sıçramalar ve diğer örneklerde %10–16 CPU. Ölçülen sorgu son 24 saatten düşük yük
+medyanını okur. Veri oluşturma ve migration ölçüm dışında; race kapalıdır.
+Go bellek ölçümü DuckDB'nin native bellek kullanımını içermez. Bu deney tüm
+Sentinel sürecinin CPU/RAM tüketimi veya üretim tahmini değildir.
+
+Üç tekrarda ortalama sorgu süreleri **0,618 ms**, **0,649 ms**, **0,582 ms**
+olarak ölçüldü. Sorgu başına Go ayırmaları 3.707–3.712 bayt ve 107 ayırmadır;
+bu sayılar tüm süreç RSS'si veya DuckDB native bellek tüketimi değildir.
+
+```sh
+go test ./internal/store -run '^$' -bench '^BenchmarkCPUReference24Hours$' -benchtime=2s -count=3
+```
+
 ## Kaynak ölçüm yöntemi
+
+Aşağıdaki üç süreç ölçümü ilk Telegram eklemesine aittir; uyarlanabilir CPU
+referans sorgusunun maliyeti yukarıdaki ayrı deneyle değerlendirilir.
 
 Ölçüm ortamı: aynı macOS arm64 makine, Go 1.26.5; race kapalı derlenmiş aynı test
 binary'si, geçici gerçek DuckDB, sahte host snapshot'ı ve başarılı yanıt veren

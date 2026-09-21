@@ -12,6 +12,7 @@ import (
 
 // Telegram credentials never belong in API representations or logs.
 type Telegram struct {
+	CPU            CPUAlerts
 	Enabled        bool
 	Token          string `json:"-"`
 	ChatID         string `json:"-"`
@@ -76,5 +77,9 @@ func loadTelegram() (Telegram, error) {
 		return c, err
 	}
 	c.SSHEnabled, err = envBool("TELEGRAM_SSH_ENABLED", false)
+	if err != nil {
+		return c, err
+	}
+	c.CPU, err = loadCPUAlerts()
 	return c, err
 }

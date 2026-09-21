@@ -62,7 +62,7 @@ func testEngine() *Engine {
 var epoch = time.Date(2026, 9, 21, 6, 0, 0, 0, time.UTC)
 
 func TestMetricAlarmHoldHysteresisRecoveryAndMissing(t *testing.T) {
-	for _, metric := range []string{"cpu", "memory", "disk", "swap"} {
+	for _, metric := range []string{"memory", "disk", "swap"} {
 		t.Run(metric, func(t *testing.T) {
 			e := testEngine()
 			step := func(sec int, value float64, unavailable bool) {

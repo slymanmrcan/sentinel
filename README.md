@@ -85,14 +85,55 @@ onayı değildir. Testler en fazla dakikada bir işlenir. Durum API'si
 
 ### Alarm ve toparlanma
 
-CPU/RAM/disk/swap için mevcut alarm kurallarının yüksek eşikleri kullanılır.
-Varsayılan kurallar CPU/RAM %90, disk %85, swap %50'dir. Telegram bildirimi için
-varsayılan olarak iki dakika boyunca koşulun devam etmesi gerekir; toparlanma
-aynı süre boyunca eşikten en az 5 yüzde puan aşağıda kalmalıdır. Örneğin CPU
-%90'da alarm, %85 ve altında toparlanma adayı olur. `TELEGRAM_ALERT_HOLD`
-30 saniye–1 saat, `TELEGRAM_RECOVERY_MARGIN` 1–30 yüzde puan arasında ayarlanabilir.
-Mevcut panel alarm geçmişinin eşik/kayıt davranışı korunur; bekleme ve toparlanma
-bildirim katmanında uygulanır. Sürenin dolması yeni, geçerli bir ölçümle doğrulanır.
+CPU Telegram bildirimleri, mevcut collector ölçümleri ve aynı sunucunun DuckDB
+geçmişi üzerinden uyarlanır. En az bir mevcut CPU alarm kuralı etkin olmalıdır.
+Varsayılan davranış:
+
+- **Erken uyarı:** CPU en az %35 ve normal seviyenin en az üç katı olduğunda,
+  koşul beş dakika sürerse bildirim. Eşik `max(35, 3 × normal medyan)` olarak
+  hesaplanır. Örneğin normal %10 ise %35; normal %20 ise %60 uyarı eşiğidir.
+- **Kritik:** CPU en az %80'de iki dakika kalırsa, normal seviyeden bağımsız
+  bildirim. Göreli erken uyarı eşiği %80'den yüksek çıkarsa kritik koruma yine çalışır.
+- **Toparlanma:** CPU %20 ve altında üç dakika kalınca tek bildirim. Uyarı ve
+  kritik aynı olayın seviyeleridir; her ölçümde veya kritik seviyeden uyarıya
+  düşüşte tekrar mesaj gönderilmez. Kritik yükseliş ayrıca bildirilir.
+
+Normal seviye, son **24 saatin medyanından** elde edilir. Öğrenmeye yalnızca
+geçerli, %35'in altında kalan CPU kayıtları katılır; bu sınır
+`TELEGRAM_CPU_WARNING` ile birlikte değişir. Böylece uzun süreli yüksek kullanım,
+başlangıç geçmişinde de normal kabul edilmez. Son beş dakika sorguya katılmaz.
+En az 120 geçerli düşük yük örneği ve ilk/son örnek arasında en az bir saat
+aranır; sorgu penceresinin sonuna yakın güncel CPU kaydı da bulunmalıdır.
+Yetersiz/eski geçmişte sabit %35 uyarı eşiği kullanılır; eksik değerler sıfır sayılmaz.
+Bu referans tüm kullanımın ortalaması değil, **düşük yükteki normal seviyedir**.
+
+Referans normal durumda beş dakikada bir, en fazla iki saniyelik DuckDB sorgusuyla
+yenilenir; collector veya HTTP/login akışında sorgu yapılmaz. Sorgu başarısızsa
+son geçerli referans en fazla 30 dakika kullanılabilir, ardından sabit eşik
+uygulanır. CPU %35'e ulaştığında bekleme süresi dolmadan referans dondurulur.
+Aktif olay boyunca yeni yüksek değerlerden öğrenilmez; bu durum ve referans
+mevcut outbox kaydıyla restart sonrasında da korunur. Kısa bir aday yükseliş
+alarma dönüşmeden biterse referans çözülür; aktif olayda ise toparlanma gerekir.
+Yeni host adı eski hostun referansını kullanmaz. Sistem kapalıyken CPU geçmişi
+sorgulayan ek iş de çalışmaz.
+
+Panelin Telegram bölümünde normal seviye, hesaplanan erken uyarı eşiği, kritik
+sınır, donmuş referans ve eksik güncel ölçüm/geçmiş durumu görünür. Mesajlar
+"CPU 5 dakikadır yüksek; şu an %40, olağan seviye %10" gibi ölçümü açıklar;
+saldırı veya sonsuz döngü teşhisi koymaz.
+
+CPU ayarları: `TELEGRAM_CPU_WARNING=35`, `TELEGRAM_CPU_MULTIPLIER=3`,
+`TELEGRAM_CPU_WARNING_HOLD=5m`, `TELEGRAM_CPU_CRITICAL=80`,
+`TELEGRAM_CPU_CRITICAL_HOLD=2m`, `TELEGRAM_CPU_RECOVERY=20`,
+`TELEGRAM_CPU_RECOVERY_HOLD=3m`. Toparlanma < uyarı < kritik olmalıdır;
+çarpan 2–10, süreler 30 saniye–1 saat aralığındadır.
+
+RAM/disk/swap için mevcut DuckDB alarm eşikleri korunur: varsayılan olarak
+RAM %90, disk %85, swap %50. `TELEGRAM_ALERT_HOLD=2m` ve
+`TELEGRAM_RECOVERY_MARGIN=5` bu metriklerin bekleme/toparlanma davranışını yönetir.
+CPU kendi sürelerini kullanır. Mevcut panel alarm geçmişi (CPU %90 kuralı dahil)
+ve bir saatlik anomali hesabı değiştirilmez; burada anlatılan yeni CPU politikası
+Telegram bildirimlerine aittir. Süreler yalnızca yeni, geçerli ölçümlerle tamamlanır.
 
 Kök diske ek olarak collector'ın izlediği diğer dosya sistemleri aynı disk kuralını
 kullanır. Bildirim tarafı en fazla 128 dosya sistemi, 32 kural ve 256 alarm durumu

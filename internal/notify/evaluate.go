@@ -18,6 +18,7 @@ func missing(m store.Metric, key string, now time.Time) bool {
 }
 func (e *Engine) evaluate(s sample, now time.Time) {
 	seen := make(map[string]bool)
+	cpuHandled := false
 	values := map[string]float64{"cpu": s.Metric.CPUPercent, "memory": s.Metric.RAMPercent, "swap": s.Metric.SwapPercent, "disk": s.Metric.DiskPercent}
 	labels := map[string]string{"cpu": "CPU", "memory": "RAM", "swap": "Swap", "disk": "Disk /"}
 	for _, r := range s.Rules {
@@ -26,6 +27,13 @@ func (e *Engine) evaluate(s sample, now time.Time) {
 			continue
 		}
 		seen["metric:"+r.ID] = true
+		if r.Metric == "cpu" {
+			if !cpuHandled {
+				e.evaluateCPU(s.Metric, "metric:"+r.ID, now)
+				cpuHandled = true
+			}
+			continue
+		}
 		valid := !missing(s.Metric, r.Metric, now) && !math.IsNaN(v) && !math.IsInf(v, 0)
 		e.transition("metric:"+r.ID, labels[r.Metric], valid, v >= r.Threshold, v <= math.Max(0, r.Threshold-float64(e.cfg.RecoveryMargin)), s.Metric.Timestamp, now, fmt.Sprintf("%.1f%% (alarm %.1f%%)", v, r.Threshold))
 		if r.Metric == "disk" {
@@ -37,6 +45,11 @@ func (e *Engine) evaluate(s sample, now time.Time) {
 				e.transition("mount:"+r.ID+":"+fs.Mountpoint, "Disk "+clip(fs.Mountpoint, 100), !missing(s.Metric, "filesystems", now) && fs.AvailableStats && !math.IsNaN(fs.UsedPercent) && !math.IsInf(fs.UsedPercent, 0), fs.UsedPercent >= r.Threshold, fs.UsedPercent <= math.Max(0, r.Threshold-float64(e.cfg.RecoveryMargin)), s.Metric.Timestamp, now, fmt.Sprintf("%.1f%%", fs.UsedPercent))
 			}
 		}
+	}
+	if !cpuHandled {
+		e.p.CPU.resetHolds()
+		e.cpuMeasurementAvailable = false
+		e.dirty = true
 	}
 	for key, a := range e.p.Alarms {
 		if (strings.HasPrefix(key, "metric:") || strings.HasPrefix(key, "mount:")) && !seen[key] && !a.Pending.IsZero() {
@@ -205,6 +218,12 @@ func (e *Engine) summary(now time.Time) string {
 			text = v.label + ": eski veya alınamıyor"
 		}
 		lines = append(lines, text)
+	}
+	cpuStatus := e.cpuStatus(now)
+	if cpuStatus.HistoryReady {
+		lines = append(lines, fmt.Sprintf("CPU normal referansı: %%%.1f · erken uyarı eşiği: %%%.1f", cpuStatus.TypicalPercent, cpuStatus.WarningThreshold))
+	} else {
+		lines = append(lines, fmt.Sprintf("CPU geçmiş referansı alınamıyor/yetersiz · sabit erken uyarı: %%%d", e.cfg.CPU.Warning))
 	}
 	// Read only the existing cache; the engine refreshes it independently each minute.
 	s := e.services

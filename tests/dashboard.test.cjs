@@ -135,3 +135,17 @@ test('Telegram status shows safe delivery details and only enables admin test co
     await d.run('loadTelegram()');
     assert.equal(d.element('telegramTest').hidden, false);
 });
+
+test('Telegram CPU reference exposes fallback and frozen history without inventing a zero baseline', async () => {
+    const d = dashboard();
+    d.run(`apiFetch=async()=>({ok:true,json:async()=>({enabled:true,pending:0,ssh:'Kapalı',cpu:{history_ready:false,typical_percent:0,warning_threshold:35,critical_threshold:80,measurement_available:false,message:'Sabit eşik'}})});`);
+    await d.run('loadTelegram()');
+    assert.match(d.element('telegramCPU').textContent, /yetersiz \/ alınamıyor/);
+    assert.match(d.element('telegramCPU').textContent, /Güncel CPU ölçümü yok/);
+    assert.doesNotMatch(d.element('telegramCPU').textContent, /normal seviyesi: %0/);
+    d.run(`apiFetch=async()=>({ok:true,json:async()=>({enabled:true,pending:0,ssh:'Kapalı',cpu:{history_ready:true,typical_percent:20,warning_threshold:60,critical_threshold:80,measurement_available:true,frozen:true}})});`);
+    await d.run('loadTelegram()');
+    assert.match(d.element('telegramCPU').textContent, /normal seviyesi: %20.0/);
+    assert.match(d.element('telegramCPU').textContent, /Erken uyarı: %60.0/);
+    assert.match(d.element('telegramCPU').textContent, /Referans sabit tutuluyor/);
+});
